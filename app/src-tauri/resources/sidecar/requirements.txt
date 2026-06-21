@@ -1,0 +1,2 @@
+markitdown[pdf,docx,pptx,xlsx,xls]
+openai

@@ -1,0 +1,24 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="96" y1="96" x2="928" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8b78ff"/>
+      <stop offset="1" stop-color="#4b39bf"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="512" y1="64" x2="512" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Brand tile -->
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#sheen)"/>
+
+  <!-- Markdown-style "M" + downward flux arrow -->
+  <g transform="translate(0,-26)" fill="none" stroke="#ffffff"
+     stroke-width="66" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M250 692 V412 L420 600 L590 412 V692"/>
+    <path d="M726 406 V648"/>
+    <path d="M672 590 L726 650 L780 590"/>
+  </g>
+</svg>

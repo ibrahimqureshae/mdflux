@@ -1,0 +1,30 @@
+MDFlux
+Copyright (c) 2026 ibrahimqureshae
+
+This software is released under the MIT License. See the LICENSE file for the
+full terms.
+
+--------------------------------------------------------------------------------
+
+This product bundles and/or provisions third-party software. A full inventory
+with versions and licenses is in THIRD-PARTY-LICENSES.md. Notable points:
+
+- The dependency tree is free of strong copyleft (no AGPL / GPL / LGPL). Every
+  dependency is permissively licensed, except certifi and tqdm, which are under
+  MPL-2.0 (file-level weak copyleft that imposes no obligation on the larger
+  work and is freely combinable with MIT).
+
+- EPUB support uses MarkItDown's built-in converter (stdlib zipfile + defusedxml,
+  both permissively licensed). An earlier build used ebooklib (AGPL-3.0-or-later);
+  it was deliberately removed to keep the dependency tree free of strong copyleft.
+
+- PDF page rasterization for OCR uses pypdfium2 (BSD-3-Clause / Apache-2.0).
+  An earlier build used PyMuPDF (AGPL-3.0 / commercial); it was deliberately
+  replaced with pypdfium2 to keep that path permissively licensed.
+
+- The Python runtime, OCR/audio engines, model weights, and the uv bootstrap
+  binary are downloaded on first use from their upstream sources and are not
+  redistributed as part of this repository.
+
+- The Windows build relies on the Microsoft WebView2 runtime, which is
+  distributed with Windows and is not bundled here.
