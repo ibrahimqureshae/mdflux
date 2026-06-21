@@ -1,0 +1,5 @@
+# Default owner for everything in the repo.
+* @ibrahimqureshae
+
+# Core conversion sidecar (Python).
+/app/src-tauri/resources/sidecar/ @ibrahimqureshae

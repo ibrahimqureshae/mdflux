@@ -1,0 +1,122 @@
+/* Design tokens — single source of truth. All components use var(--…) exclusively. */
+
+/* ── Palette ──────────────────────────────────────────────────────────────── */
+:root {
+  /* MDFlux brand palette — cool dark surfaces + blue mark accent. */
+  --canvas:         #0a0a0b;   /* window background (brand Page) */
+  --surface-1:      #141417;   /* cards, panels */
+  --surface-2:      #1f1f25;   /* elevated: hover, result bg, secondary buttons */
+  --surface-3:      #2c2c33;   /* button hover, active surfaces */
+  --border:         #2a2a31;   /* all borders — readable on near-black */
+  --border-strong:  #3a3a44;   /* button borders, emphasis edges */
+  --text-primary:   #fafafa;   /* headings, labels (brand Text) */
+  --text-secondary: #cfccd6;   /* metadata, secondary — high enough contrast to read */
+  --text-muted:     #9a96a4;   /* hints, placeholders (brand Muted) */
+  --accent:         #3b82f6;   /* brand Primary — the blue mark, the one bold choice */
+  --accent-hover:   #6aa1f5;   /* brand Light — accent button hover */
+  --accent-edge:    #2563eb;   /* brand Deep — darker edge under accent fills */
+  --accent-dim:     color-mix(in srgb, var(--accent) 15%, transparent);
+  --green:          #3fb950;   /* brand Success */
+  --red:            #ff5b5b;   /* error */
+  --amber:          #ffb13d;   /* partial / warning */
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  --font-ui:   'Inter', 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+
+  /* ── Spacing scale ────────────────────────────────────────────────────── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-12: 48px;
+
+  /* ── Radii ────────────────────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 16px;
+
+  /* ── Transitions ──────────────────────────────────────────────────────── */
+  --transition-fast: 120ms ease;
+  --transition:      200ms ease;
+}
+
+/* ── Base reset ───────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* ── Focus ring ───────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Button system (canonical, self-contained) ────────────────────────────────
+   Shared so components don't each redefine the same recipe. Global (unscoped) so any
+   component can use the class names directly. Each is self-contained (layout + colour)
+   so markup needs only the one class, e.g. <button class="btn-primary">. */
+.btn-primary, .btn-secondary, .btn-tertiary, .btn-danger, .btn-accent-soft {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 15px;
+  font-size: 13px; font-weight: 600; font-family: var(--font-ui);
+  border-radius: var(--radius-sm); border: 1px solid transparent; cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast), transform var(--transition-fast);
+}
+.btn-primary > svg, .btn-secondary > svg, .btn-danger > svg, .btn-accent-soft > svg { flex-shrink: 0; }
+.btn-primary:active, .btn-secondary:active, .btn-tertiary:active,
+.btn-danger:active, .btn-accent-soft:active { transform: translateY(1px); }
+.btn-primary:disabled, .btn-secondary:disabled, .btn-tertiary:disabled,
+.btn-danger:disabled, .btn-accent-soft:disabled { opacity: 0.45; cursor: default; }
+
+.btn-sm { height: 30px; padding: 0 12px; font-size: 12.5px; }
+
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent-edge); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-secondary { background: var(--surface-2); color: var(--text-primary); border-color: var(--border-strong); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-3); border-color: #565660; }
+
+.btn-tertiary { background: transparent; color: var(--text-secondary); }
+.btn-tertiary:hover:not(:disabled) { background: var(--surface-2); color: var(--text-primary); }
+
+.btn-danger { background: transparent; color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); }
+.btn-danger:hover:not(:disabled) { background: var(--red); border-color: var(--red); color: #fff; }
+
+.btn-accent-soft { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.btn-accent-soft:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ── Segmented control (canonical) ───────────────────────────────────────────── */
+.seg { display: inline-flex; background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 3px; gap: 3px; }
+.seg-btn {
+  padding: 4px 13px; font-size: 12px; font-weight: 600; font-family: var(--font-ui);
+  border: none; border-radius: 4px; background: transparent; color: var(--text-secondary);
+  cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast);
+}
+.seg-btn:hover:not(:disabled):not(.active) { color: var(--text-primary); background: var(--surface-2); }
+.seg-btn.active { background: var(--accent); color: #fff; }
+.seg-btn:disabled { opacity: 0.4; cursor: default; }

@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Frontend (SvelteKit / Tauri JS deps)
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Rust shell (Tauri)
+  - package-ecosystem: cargo
+    directory: /app/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # GitHub Actions used in CI / release workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

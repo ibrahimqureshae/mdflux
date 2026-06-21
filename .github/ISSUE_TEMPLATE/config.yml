@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: mailto:muhammadibrahim.ger@gmail.com
+    about: Please report security vulnerabilities privately by email, not as a public issue. See SECURITY.md.
+  - name: Question or idea
+    url: https://github.com/ibrahimqureshae/mdflux/issues/new/choose
+    about: For usage questions and feature ideas, open a bug report or feature request.

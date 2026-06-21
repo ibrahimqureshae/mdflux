@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MDFlux",
+  "version": "0.1.0",
+  "identifier": "com.projektvisyo.mdflux",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MDFlux",
+        "width": 960,
+        "height": 680,
+        "minWidth": 680,
+        "minHeight": 520,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": ["nsis"],
+    "publisher": "ibrahimqureshae",
+    "copyright": "© 2026 ibrahimqureshae",
+    "category": "Productivity",
+    "shortDescription": "Convert documents to clean Markdown — offline.",
+    "longDescription": "MDFlux turns PDFs, Office files, images, audio and more into clean Markdown. It self-installs its dependencies on first launch, runs fully offline, and adds batch processing, cleanup, OCR/transcription, and an optional local/API intelligence layer on top of Microsoft's MarkItDown.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/sidecar/*",
+      "resources/sidecar/requirements.lock",
+      "resources/sidecar/requirements-ocr.lock",
+      "resources/sidecar/requirements-audio.lock"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+# ── Dependencies & build output ──────────────────────────────────────────
+node_modules/
+target/
+.svelte-kit/
+build/
+dist/
+*.log
+
+# ── Python bytecode ───────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+
+# ── Editor / OS ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── Internal working dirs (not part of the public repo) ───────────────────
+.claude/
+Marketing/
+benchmarks/
+_tests/
+fixtures/
+
+# ── Tauri generated ───────────────────────────────────────────────────────
+app/src-tauri/gen/
+
+# ── App-internal design note ──────────────────────────────────────────────
+app/ipc-contract-v1.md
+
+# ── Internal docs: ignore every root-level *.md EXCEPT the standard repo
+#    files. This is a whitelist, so future internal notes never leak in. ────
+/*.md
+!/README.md
+!/SECURITY.md
+!/THIRD-PARTY-LICENSES.md
+!/CONTRIBUTING.md
+!/CODE_OF_CONDUCT.md
+!/CHANGELOG.md
+!/ROADMAP.md
