@@ -26,8 +26,8 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": ["nsis"],
+    "active": true,
+    "targets": ["nsis", "app", "dmg"],
     "publisher": "ibrahimqureshae",
     "copyright": "© 2026 ibrahimqureshae",
     "category": "Productivity",
@@ -46,6 +46,9 @@
       "resources/sidecar/requirements-ocr.lock",
       "resources/sidecar/requirements-audio.lock"
     ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser"

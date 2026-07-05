@@ -28,8 +28,11 @@ jobs:
       - run: npm run check
 
   rust:
-    name: Rust check (cargo)
-    runs-on: windows-latest
+    name: Rust check (cargo) — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
     defaults:
       run:
         working-directory: app/src-tauri
