@@ -1,8 +1,9 @@
 """
-OCR engine — RapidOCR + pypdfium2 (both pip-installable, no system binary required).
+OCR engine — RapidOCR 3 + pypdfium2 (both pip-installable, no system binary required).
 
-RapidOCR uses ONNX Runtime; pypdfium2 rasterises PDF pages for OCR.
-Both are installed together via install_engine("ocr").
+RapidOCR 3.9+ defaults to Baidu PP-OCRv6 small (ONNX Runtime). Models ship inside the
+pinned `rapidocr` wheel, so install stays offline after the hash-verified pip step.
+pypdfium2 rasterises PDF pages for OCR.
 """
 import importlib.util
 import os
@@ -19,13 +20,16 @@ def is_available() -> bool:
     """
     True when RapidOCR is installed.
 
-    Uses find_spec rather than importing — importing rapidocr_onnxruntime pulls in
+    Uses find_spec rather than importing — importing RapidOCR pulls in
     onnxruntime, whose native thread pools interfere with the sidecar's asyncio
     Proactor event loop on Windows (it stalls subprocess pipe pumping, hanging the
     first OCR request). The heavy import only ever happens inside the short-lived
     OCR worker subprocess, never in the main sidecar process.
     """
-    return importlib.util.find_spec("rapidocr_onnxruntime") is not None
+    return (
+        importlib.util.find_spec("rapidocr") is not None
+        or importlib.util.find_spec("rapidocr_onnxruntime") is not None
+    )
 
 
 def has_pdf_renderer() -> bool:
@@ -34,26 +38,61 @@ def has_pdf_renderer() -> bool:
 
 
 def _make_engine(intra_op_threads: int = 0):
-    """Build a RapidOCR engine, optionally limiting its onnxruntime thread count so
-    concurrent batch workers don't oversubscribe the CPU. The kwarg is best-effort:
-    if a RapidOCR version rejects it, fall back to the default engine."""
-    from rapidocr_onnxruntime import RapidOCR
+    """Build a RapidOCR engine, optionally limiting onnxruntime threads so
+    concurrent batch workers don't oversubscribe the CPU."""
     n = int(intra_op_threads or 0)
+    if importlib.util.find_spec("rapidocr") is not None:
+        from rapidocr import RapidOCR
+        # Pin v6 small explicitly. RapidOCR 3.9+ already defaults here; we do not
+        # want a later wheel silently switching to medium (slower, +108 MB, worse det).
+        params: dict = {
+            "Global.log_level": "warning",
+            "Det.ocr_version": "PP-OCRv6",
+            "Det.model_type": "small",
+            "Rec.ocr_version": "PP-OCRv6",
+            "Rec.model_type": "small",
+        }
+        if n > 0:
+            params["EngineConfig.onnxruntime.intra_op_num_threads"] = n
+            params["EngineConfig.onnxruntime.inter_op_num_threads"] = n
+        try:
+            return RapidOCR(params=params)
+        except Exception:  # noqa: BLE001 — older/newer keys; use defaults
+            return RapidOCR()
+
+    from rapidocr_onnxruntime import RapidOCR
     if n > 0:
         try:
             return RapidOCR(intra_op_num_threads=n, inter_op_num_threads=n)
-        except Exception:  # noqa: BLE001 — older/newer API; use the default
+        except Exception:  # noqa: BLE001
             pass
     return RapidOCR()
+
+
+def _result_text(result) -> str:
+    """Pull reading-order text from RapidOCR 3 output, with a v1 list fallback."""
+    txts = getattr(result, "txts", None)
+    if txts:
+        to_md = getattr(result, "to_markdown", None)
+        if callable(to_md):
+            md = to_md()
+            if md and "没有检测" not in md:
+                return md
+        return "\n".join(t for t in txts if t and str(t).strip())
+    if not result:
+        return ""
+    # rapidocr-onnxruntime 1.x: list of [box, text, score]
+    lines = []
+    for item in result:
+        if len(item) > 1 and item[1]:
+            lines.append(item[1])
+    return "\n".join(lines)
 
 
 def ocr_image(path: str, intra_op_threads: int = 0) -> str:
     """Run OCR on a single image file; return extracted text as plain text."""
     engine = _make_engine(intra_op_threads)
-    result, _ = engine(path)
-    if not result:
-        return ""
-    return "\n".join(item[1] for item in result if len(item) > 1 and item[1])
+    return _result_text(engine(path))
 
 
 def is_scanned_pdf(path: str) -> bool:
@@ -95,9 +134,9 @@ def is_scanned_pdf(path: str) -> bool:
 
 def ocr_pdf(path: str, progress_cb=None, intra_op_threads: int = 0) -> str:
     """
-    Rasterise each PDF page at 150 DPI and OCR it with RapidOCR.
+    Rasterise each PDF page at 220 DPI and OCR it with RapidOCR.
     Renders each page to a temp PNG via pypdfium2 + Pillow (Pillow is a transitive
-    dep of rapidocr-onnxruntime, so it is always present when this function runs).
+    dep of RapidOCR, so it is always present when this function runs).
     progress_cb(frac, stage_str) called per page.
     """
     import pypdfium2 as pdfium
@@ -113,26 +152,22 @@ def ocr_pdf(path: str, progress_cb=None, intra_op_threads: int = 0) -> str:
             if progress_cb:
                 progress_cb(i / n, f"OCR page {i + 1}/{n}")
 
-            bitmap = page.render(scale=150 / 72)  # 150 DPI
+            bitmap = page.render(scale=220 / 72)  # 220 DPI — sharper than 150, still faster than 300
 
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                 tmp_path = tmp.name
 
             try:
                 bitmap.to_pil().save(tmp_path)
-                result, _ = engine(tmp_path)
+                text = _result_text(engine(tmp_path))
             finally:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
 
-            if result:
-                page_text = "\n".join(
-                    item[1] for item in result if len(item) > 1 and item[1]
-                )
-                if page_text.strip():
-                    pages.append(f"## Page {i + 1}\n\n{page_text}")
+            if text.strip():
+                pages.append(f"## Page {i + 1}\n\n{text.strip()}")
     finally:
         doc.close()
     return "\n\n".join(pages) if pages else ""

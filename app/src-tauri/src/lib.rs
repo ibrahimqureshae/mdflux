@@ -213,7 +213,7 @@ pub(crate) fn hide_console(_cmd: &mut std::process::Command) {}
 
 /// Core formats always supported (provisioned at Stage 0).
 const CORE_EXTS: &[&str] = &[
-    "pdf", "docx", "pptx", "xlsx", "xls", "html", "htm", "csv", "json", "xml", "epub",
+    "pdf", "docx", "pptx", "xlsx", "xls", "html", "htm", "csv", "json", "xml", "epub", "txt", "md",
 ];
 /// Formats requiring the OCR engine.
 const OCR_EXTS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "tiff", "tif", "bmp"];
@@ -532,7 +532,7 @@ async fn pick_file(app: AppHandle) -> Result<Option<String>, String> {
                 "Supported files",
                 &[
                     "pdf", "docx", "pptx", "xlsx", "xls", "html", "htm", "csv", "json", "xml",
-                    "epub",
+                    "epub", "txt", "md",
                     "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif", "bmp",
                     "mp3", "wav", "m4a", "ogg", "flac", "aac",
                 ],

@@ -7,6 +7,7 @@
   import ConvertProgress from '$lib/ConvertProgress.svelte';
   import ResultView from '$lib/ResultView.svelte';
   import ModeSwitch from '$lib/ModeSwitch.svelte';
+  import SponsorMenu from '$lib/SponsorMenu.svelte';
   import DiagnosticsView from '$lib/DiagnosticsView.svelte';
   import BatchQueueView from '$lib/BatchQueueView.svelte';
   import BatchSummaryView from '$lib/BatchSummaryView.svelte';
@@ -355,7 +356,7 @@
           code: 'UNSUPPORTED_FORMAT',
           title: 'Unsupported file type',
           detail: 'None of the selected files are a supported format.',
-          suggested_action: 'Choose PDF, DOCX, PPTX, XLSX, EPUB, HTML, CSV, JSON, XML, an image, or audio.',
+          suggested_action: 'Choose PDF, DOCX, PPTX, XLSX, EPUB, HTML, CSV, JSON, XML, TXT, Markdown, an image, or audio.',
         };
         return;
       }
@@ -533,6 +534,7 @@
       </span>
     {/if}
     <div class="header-right">
+      <SponsorMenu />
       {#if phase === 'ready' && config}
         <ModeSwitch mode={config.llm_mode} onModeChange={(m) => updateConfig({ ...config!, llm_mode: m })} />
         <button

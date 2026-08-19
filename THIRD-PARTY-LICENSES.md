@@ -36,8 +36,8 @@ engines. Key packages:
 
 | Package | Version | License |
 |---------|---------|---------|
-| markitdown | 0.1.6 | MIT |
-| openai | 2.43.0 | Apache-2.0 |
+| markitdown | 0.1.7 | MIT |
+| openai | 2.54.0 | Apache-2.0 |
 | pdfminer.six | 20260107 | MIT |
 | pdfplumber | 0.11.10 | MIT |
 | mammoth | 1.11.0 | BSD-2-Clause |
@@ -59,13 +59,13 @@ engines. Key packages:
 
 | Package | Version | License |
 |---------|---------|---------|
-| pypdfium2 | 5.9.0 | BSD-3-Clause / Apache-2.0 |
-| rapidocr-onnxruntime | 1.4.4 | Apache-2.0 |
-| onnxruntime | 1.20.1 | MIT |
+| pypdfium2 | 5.13.0 | BSD-3-Clause / Apache-2.0 |
+| rapidocr | 3.9.2 | Apache-2.0 |
+| onnxruntime | 1.29.0 | MIT |
 | faster-whisper | 1.2.1 | MIT |
 | ctranslate2 | 4.8.0 | MIT |
 | tokenizers | 0.23.1 | Apache-2.0 |
-| huggingface-hub | 1.20.0 | Apache-2.0 |
+| huggingface-hub | 1.20.1 | Apache-2.0 |
 | pillow | 12.2.0 | MIT-CMU (HPND) |
 | numpy | 2.4.6 | BSD-3-Clause (+ 0BSD / MIT / Zlib components) |
 | tqdm | 4.68.3 | **MPL-2.0** AND MIT (file-level; no effect on larger work) |

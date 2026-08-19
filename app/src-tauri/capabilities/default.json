@@ -7,6 +7,16 @@
     "core:default",
     "core:window:allow-set-title",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://github.com/sponsors/*" },
+        { "url": "https://www.buymeacoffee.com/*" },
+        { "url": "https://buymeacoffee.com/*" },
+        { "url": "https://www.paypal.me/*" },
+        { "url": "https://paypal.me/*" }
+      ]
+    },
     "dialog:default",
     "dialog:allow-save",
     "fs:default",

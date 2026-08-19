@@ -99,6 +99,22 @@ _CORE_FORMATS: list[dict] = [
         "converter": "markitdown.converters.html.HtmlConverter",
         "mode": "markitdown",
     },
+    {
+        "key": "txt",
+        "label": "Plain text",
+        "extensions": [".txt"],
+        "module": None,
+        "converter": "markitdown.converters.plain_text.PlainTextConverter",
+        "mode": "markitdown",
+    },
+    {
+        "key": "md",
+        "label": "Markdown",
+        "extensions": [".md"],
+        "module": None,
+        "converter": "markitdown.converters.plain_text.PlainTextConverter",
+        "mode": "markitdown",
+    },
 ]
 
 # OCR-based image formats — activated when RapidOCR is installed.
@@ -107,7 +123,7 @@ _OCR_FORMATS: list[dict] = [
         "key": "image",
         "label": "Images (JPG, PNG, TIFF, WebP…)",
         "extensions": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".tiff", ".tif", ".bmp"],
-        "module": "rapidocr_onnxruntime",
+        "module": "rapidocr",
         "converter": "ocr.RapidOCR",
         "mode": "ocr",
         "note": None,
@@ -147,7 +163,7 @@ def ext_to_format(ext: str) -> dict | None:
     return None
 
 
-SUPPORTED_LIST = "PDF, DOCX, PPTX, XLSX, HTML, CSV, JSON, XML, EPUB, images, or audio"
+SUPPORTED_LIST = "PDF, DOCX, PPTX, XLSX, HTML, CSV, JSON, XML, EPUB, TXT, Markdown, images, or audio"
 
 
 # ── Diagnostics report ────────────────────────────────────────────────────────
@@ -189,6 +205,7 @@ def _probe(fmt: dict) -> dict:
 
 # Module → distribution name, for version lookup without importing the module.
 _DIST_NAMES = {
+    "rapidocr": "rapidocr",
     "rapidocr_onnxruntime": "rapidocr-onnxruntime",
     "faster_whisper": "faster-whisper",
 }
@@ -207,7 +224,7 @@ def _probe_optional(fmt: dict) -> dict:
     """
     Probe an optional-engine format (OCR/audio) WITHOUT importing the engine.
 
-    Importing rapidocr_onnxruntime / faster_whisper loads native runtimes
+    Importing rapidocr / faster_whisper loads native runtimes
     (onnxruntime, CTranslate2) into the main sidecar process, which stalls the
     asyncio Proactor event loop's subprocess pipe handling on Windows. We only
     check presence via find_spec and read the version from package metadata.
@@ -229,17 +246,24 @@ def _probe_optional(fmt: dict) -> dict:
 
 def _ocr_optional_status() -> dict:
     """Return the optional.ocr block for the capabilities report (no heavy import)."""
+    if importlib.util.find_spec("rapidocr") is not None:
+        return {
+            "status": "installed",
+            "engine": "rapidocr (PP-OCRv6 small)",
+            "size_hint": "~210 MB",
+            "note": "RapidOCR + PP-OCRv6 small. Scanned PDFs and image files.",
+        }
     if importlib.util.find_spec("rapidocr_onnxruntime") is not None:
         return {
             "status": "installed",
-            "engine": "rapidocr-onnxruntime",
+            "engine": "rapidocr-onnxruntime (PP-OCRv4)",
             "size_hint": "~200 MB",
-            "note": "RapidOCR — scanned PDFs and image files",
+            "note": "Older RapidOCR (PP-OCRv4). Reinstall OCR to upgrade to PP-OCRv6.",
         }
     return {
         "status": "not_installed",
-        "engine": "rapidocr-onnxruntime",
-        "size_hint": "~200 MB (ONNX Runtime + model)",
+        "engine": "rapidocr (PP-OCRv6 small)",
+        "size_hint": "~210 MB (ONNX Runtime + PP-OCRv6 small)",
         "note": "Install to convert scanned PDFs and image files",
     }
 

@@ -4,7 +4,7 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import type { ConvertError } from './ErrorCard.svelte';
   import ErrorCard from './ErrorCard.svelte';
-  import { SUPPORTED_EXTS } from './formats';
+  import { SUPPORTED_EXTS, extFromPath, formatLabel } from './formats';
 
   let {
     onAdd,
@@ -23,6 +23,32 @@
   type LocalState = 'idle' | 'drag-hover';
   let localState = $state<LocalState>('idle');
   let dropState = $derived(error ? 'error' : localState);
+  let hoverLabels = $state<string[]>([]);
+  const hoverTitle = $derived(
+    hoverLabels.length === 0
+      ? 'Drop files or a folder'
+      : hoverLabels.length === 1
+        ? `Drop ${hoverLabels[0]}`
+        : `Drop ${hoverLabels.length} files · ${hoverLabels.join(' · ')}`,
+  );
+
+  function labelsFromPaths(paths: string[]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const p of paths) {
+      const label = formatLabel(extFromPath(p));
+      if (seen.has(label)) continue;
+      seen.add(label);
+      out.push(label);
+    }
+    return out;
+  }
+
+  function pathsFromPayload(payload: unknown): string[] {
+    if (!payload || typeof payload !== 'object') return [];
+    const paths = (payload as { paths?: unknown }).paths;
+    return Array.isArray(paths) ? paths.filter((p): p is string => typeof p === 'string') : [];
+  }
 
   onMount(() => {
     let unlistenDrop: (() => void) | undefined;
@@ -30,18 +56,21 @@
     let unlistenLeave: (() => void) | undefined;
     let dead = false;
 
-    listen<{ paths: string[] }>('tauri://drag-drop', (e) => {
+    listen<{ paths?: string[] }>('tauri://drag-drop', (e) => {
       localState = 'idle';
-      const paths = e.payload.paths ?? [];
+      hoverLabels = [];
+      const paths = pathsFromPayload(e.payload);
       if (paths.length) onAdd(paths);
     }).then(fn => { if (dead) fn(); else unlistenDrop = fn; });
 
-    listen('tauri://drag-enter', () => {
+    listen<unknown>('tauri://drag-enter', (e) => {
       localState = 'drag-hover';
+      hoverLabels = labelsFromPaths(pathsFromPayload(e.payload));
     }).then(fn => { if (dead) fn(); else unlistenEnter = fn; });
 
     listen('tauri://drag-leave', () => {
       if (localState === 'drag-hover') localState = 'idle';
+      hoverLabels = [];
     }).then(fn => { if (dead) fn(); else unlistenLeave = fn; });
 
     return () => {
@@ -98,9 +127,9 @@
           <path d="M5 28h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".25"/>
         </svg>
       </div>
-      <p class="label">Drop files or a folder</p>
+      <p class="label">{dropState === 'drag-hover' ? hoverTitle : 'Drop files or a folder'}</p>
       <p class="hint">or <span class="link">browse to choose</span></p>
-      <p class="formats">PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · images · audio</p>
+      <p class="formats">PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · XML · TXT · MD · images · audio</p>
     </div>
   {/if}
 </div>

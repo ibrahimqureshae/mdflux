@@ -233,9 +233,10 @@ def _clean_one_chunk(chunk, mode, api_type, base_url, key, model, timeout) -> st
         return _provider.chat_local(base_url, model, system, chunk, timeout,
                                     num_ctx=num_ctx, num_predict=out_budget)
 
-    # api, openai-compatible (OpenAI, Groq, …) — large fixed context; cap the output.
+    # api, openai-compatible (OpenAI, Groq, DeepSeek, …). Floor max_tokens so a
+    # thinking model cannot spend the entire budget on hidden reasoning.
     return _provider.chat_openai_compat(base_url, key, model, system, chunk, timeout,
-                                        max_tokens=out_budget)
+                                        max_tokens=max(4096, out_budget))
 
 
 def _split_into_chunks(text: str, target_chars: int) -> list[str]:

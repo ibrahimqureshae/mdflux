@@ -20,7 +20,7 @@ unverified code.
 
 ## Model weights (OCR / audio)
 
-- **OCR:** models ship inside the pinned, integrity-verified OCR package — no separate download.
+- **OCR:** models ship inside the pinned, integrity-verified `rapidocr` wheel (PP-OCRv6 small) — no separate download.
 - **Audio (faster-whisper):** model weights download from the official Systran HuggingFace
   repositories on first use of the opt-in audio engine. These are trusted at download time and not
   yet revision-pinned; pinned verification is planned. If you require a fully verified supply chain,

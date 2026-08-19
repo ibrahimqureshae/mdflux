@@ -331,9 +331,10 @@
   .cleanup-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
   .cleanup-shot{
     background:var(--panel);border:1px solid var(--border);border-radius:var(--r-card);
-    padding:18px;display:flex;justify-content:center;
+    padding:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;
   }
   .cleanup-shot img{border-radius:var(--r-inset);border:1px solid var(--hairline);width:100%;height:auto}
+  .shot-caption{margin:12px 0 0;font-size:13px;color:var(--muted);text-align:center;line-height:1.45}
   .modes{display:flex;flex-direction:column;gap:14px}
   .mode{
     background:var(--panel);border:1px solid var(--border);border-radius:var(--r-card);
@@ -407,7 +408,7 @@
     <div class="eyebrow"><span class="dot"></span>Reads documents other tools can't.</div>
     <h1>Converts documents into clean, <em>AI-ready Markdown.</em></h1>
     <p class="sub">On your machine. No upload.</p>
-    <p class="sub" style="font-size:14px;opacity:.65;margin-top:8px">Works with PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · XML · images · audio</p>
+    <p class="sub" style="font-size:14px;opacity:.65;margin-top:8px">Works with PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · XML · TXT · MD · images · audio</p>
     <div class="chips">
       <span class="chip">Open Source</span>
       <span class="chip">MIT</span>
@@ -504,12 +505,12 @@
     <div class="feature-grid">
       <div class="feature"><div class="ic">💸</div><h3>Fewer tokens, lower cost</h3><p>Clean Markdown costs about 2 to 6× fewer tokens than sending pages to a vision model. Every LLM call that reads the document is cheaper.</p></div>
       <div class="feature"><div class="ic">🔒</div><h3>Local and private</h3><p>Your documents never leave your machine. No cloud, no API key, no account.</p></div>
-      <div class="feature"><div class="ic">🔍</div><h3>Reads scanned PDFs</h3><p>Built-in OCR recovers text that plain extractors return as zero characters.</p></div>
+      <div class="feature"><div class="ic">🔍</div><h3>Reads scanned PDFs</h3><p>Built-in OCR recovers text from scans that other tools treat as blank.</p></div>
       <div class="feature"><div class="ic">🧱</div><h3>Real structure</h3><p>Proper Markdown with headings, tables, and lists intact. Readable, greppable, diff-able.</p></div>
       <div class="feature"><div class="ic">🖥️</div><h3>No terminal needed</h3><p>Portable app. Unzip, run, click through a one-time setup. Done.</p></div>
-      <div class="feature"><div class="ic">📦</div><h3>Many formats</h3><p>PDF, DOCX, PPTX, XLSX, EPUB, HTML, CSV, JSON, XML, images, and audio.</p></div>
+      <div class="feature"><div class="ic">📦</div><h3>Many formats</h3><p>PDF, DOCX, PPTX, XLSX, EPUB, HTML, CSV, JSON, XML, TXT, Markdown, images, and audio.</p></div>
       <div class="feature"><div class="ic">🔁</div><h3>Batch a whole folder</h3><p>Convert everything at once, with progress, cancellation, and per-file diagnostics.</p></div>
-      <div class="feature"><div class="ic">🧹</div><h3>Optional cleanup</h3><p>Off, rule-based, or a local AI pass to tidy up messy extractions.</p></div>
+      <div class="feature"><div class="ic">🧹</div><h3>Optional cleanup</h3><p>Off, rule-based, or an AI pass (local or API). The Changes tab shows what cleanup added or removed.</p></div>
     </div>
   </div>
 </section>
@@ -596,10 +597,14 @@
           <span class="dot-c" style="background:var(--muted)"></span>
           <div>
             <h3>API <span class="tag">bring-your-own-key</span></h3>
-            <p>For when you want a frontier model's cleanup. OpenAI-compatible client, your key, your cost. Clearly marked, never the default, never required.</p>
+            <p>For when you want a frontier model's cleanup. Pick the provider in Diagnostics (DeepSeek, OpenAI, and other OpenAI-compatible endpoints), then Test the key. Clearly marked, never the default, never required.</p>
           </div>
         </div>
       </div>
+    </div>
+    <div class="cleanup-shot" style="margin-top:48px;max-width:600px;margin-left:auto;margin-right:auto">
+      <img src="docs/media/screenshot-changes.png" alt="Changes tab after cleanup, showing added and removed lines" width="600" height="444" loading="lazy">
+      <p class="shot-caption">The Changes tab after cleanup: what was added or removed, line by line.</p>
     </div>
   </div>
 </section>

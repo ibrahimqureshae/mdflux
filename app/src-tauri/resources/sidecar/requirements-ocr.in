@@ -1,2 +1,3 @@
-rapidocr-onnxruntime
-pypdfium2
+rapidocr>=3.9.2,<4
+onnxruntime>=1.29,<2
+pypdfium2>=5.13

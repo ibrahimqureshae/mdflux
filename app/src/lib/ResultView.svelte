@@ -4,9 +4,10 @@
   import type { CleanupResult, CleanupMethod, CleanupUIState, ViewMode } from './cleanup';
   import { lineDiff } from './diff';
   import type { DiffResult } from './diff';
+  import GitHubDiff from './GitHubDiff.svelte';
   import { renderMarkdown } from './mdpreview';
   import { buildOutputFilename, type NamingCase } from './naming';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
 
   let {
     markdown,
@@ -94,6 +95,13 @@
     Object.fromEntries((cleanup.rulesSummary?.rules ?? []).map(r => [r.key, r.changes])),
   );
 
+  const isEmpty = $derived(!markdown.trim());
+  const bannerText = $derived(
+    isEmpty
+      ? (warnings.find(w => w.toLowerCase().includes('no text')) ?? 'No text could be extracted from this file.')
+      : (warnings.length ? warnings.join(' ') : ''),
+  );
+
   function setView(v: ViewMode) { cleanup.viewMode = v; }
 
   // ── Cleanup method ─────────────────────────────────────────────────────────
@@ -172,6 +180,21 @@
   let confirming = $state(false);
 
   onDestroy(() => clearTimeout(copyTimeout));
+
+  onMount(() => {
+    function onCopyKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'c' || e.altKey) return;
+      if (confirming) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const sel = window.getSelection()?.toString() ?? '';
+      if (sel) return;
+      e.preventDefault();
+      copyMarkdown();
+    }
+    window.addEventListener('keydown', onCopyKey);
+    return () => window.removeEventListener('keydown', onCopyKey);
+  });
 
   async function copyMarkdown() {
     try {
@@ -342,6 +365,10 @@
     {/if}
   </div>
 
+  {#if bannerText}
+    <div class="result-banner" class:result-banner-empty={isEmpty} role="status">{bannerText}</div>
+  {/if}
+
   <!-- Content -->
   {#if cleanup.viewMode === 'split' && hasChanges}
     <div class="split">
@@ -361,23 +388,15 @@
       </div>
     </div>
   {:else}
-  <div class="scroll-area" tabindex="0" role="region" aria-label="Markdown result">
+  <div
+    class="scroll-area"
+    class:diff-bleed={cleanup.viewMode === 'changes' && !!diff}
+    tabindex="0"
+    role="region"
+    aria-label="Markdown result"
+  >
     {#if cleanup.viewMode === 'changes' && diff}
-      {#if diff.kind === 'summary'}
-        <div class="diff-summary">
-          <p>{diff.note}</p>
-          <p class="diff-counts"><span class="add-count">+{diff.added.toLocaleString()}</span> <span class="del-count">−{diff.removed.toLocaleString()}</span> lines</p>
-        </div>
-      {:else}
-        <div class="diff-view">
-          {#each diff.rows as row}
-            <div class="diff-row diff-{row.type}">
-              <span class="diff-gutter" aria-hidden="true">{row.type === 'add' ? '+' : row.type === 'del' ? '−' : ''}</span>
-              <span class="diff-text">{row.text || ' '}</span>
-            </div>
-          {/each}
-        </div>
-      {/if}
+      <GitHubDiff {diff} filename="{sourceStem}.md" />
     {:else if cleanup.viewMode === 'preview'}
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
       <div class="preview" onclick={onPreviewClick}>{@html previewHtml}</div>
@@ -397,7 +416,7 @@
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 1.5h5L11 4.5V12a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 3 12V1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 6.2v3.6M5.2 8h3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         Open a New File
       </button>
-      <button class="btn-secondary" title="Copy the current Markdown to the clipboard" onclick={copyMarkdown}>
+      <button class="btn-secondary" title="Copy the current Markdown to the clipboard (Ctrl+C)" onclick={copyMarkdown}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7.5" height="7.5" rx="1.3" stroke="currentColor" stroke-width="1.2"/><path d="M9.5 4.5V3a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1H4.5" stroke="currentColor" stroke-width="1.2"/></svg>
         {copyLabel}
       </button>
@@ -519,7 +538,19 @@
 
   /* Content */
   .scroll-area { flex: 1; overflow-y: auto; padding: var(--sp-5) var(--sp-6); min-height: 0; outline: none; }
+  .scroll-area.diff-bleed { padding: 0; overflow: auto; }
   .scroll-area:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -2px; }
+
+  .result-banner {
+    flex-shrink: 0;
+    padding: 8px var(--sp-4);
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--amber);
+    background: color-mix(in srgb, var(--amber) 12%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  }
+  .result-banner-empty { color: var(--text-secondary); }
 
   /* Split view — before vs after cleanup, rendered side by side, scroll-synced. */
   .split { flex: 1; display: flex; min-height: 0; }
@@ -563,21 +594,6 @@
   .preview :global(th), .preview :global(td) { border: 1px solid var(--border); padding: 5px 10px; text-align: left; }
   .preview :global(th) { background: var(--surface-2); font-weight: 600; }
   .preview :global(img) { max-width: 100%; }
-
-  /* Diff */
-  .diff-view { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; user-select: text; }
-  .diff-row { display: flex; gap: var(--sp-2); white-space: pre-wrap; word-break: break-word; padding: 0 var(--sp-1); }
-  .diff-gutter { flex-shrink: 0; width: 10px; text-align: center; color: var(--text-muted); user-select: none; }
-  .diff-text { flex: 1; min-width: 0; }
-  .diff-same { color: var(--text-secondary); }
-  .diff-add  { background: color-mix(in srgb, var(--green) 12%, transparent); }
-  .diff-add .diff-text, .diff-add .diff-gutter { color: var(--green); }
-  .diff-del  { background: color-mix(in srgb, var(--red) 12%, transparent); }
-  .diff-del .diff-text, .diff-del .diff-gutter { color: var(--red); }
-  .diff-summary { font-size: 13px; color: var(--text-secondary); display: flex; flex-direction: column; gap: var(--sp-2); }
-  .diff-counts { font-family: var(--font-mono); }
-  .add-count { color: var(--green); }
-  .del-count { color: var(--red); margin-left: var(--sp-2); }
 
   /* Bottom bar */
   .bottom-bar {

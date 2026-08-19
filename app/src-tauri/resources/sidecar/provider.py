@@ -75,6 +75,40 @@ def check_local(base_url: str) -> dict:
     }
 
 
+def _host_name(url: str) -> str:
+    u = (url or "").lower()
+    table = (
+        ("openai.com", "OpenAI"),
+        ("deepseek.com", "DeepSeek"),
+        ("groq.com", "Groq"),
+        ("anthropic.com", "Anthropic"),
+        ("googleapis.com", "Google Gemini"),
+        ("openrouter.ai", "OpenRouter"),
+        ("together.xyz", "Together AI"),
+        ("mistral.ai", "Mistral"),
+        ("fireworks.ai", "Fireworks"),
+        ("x.ai", "xAI"),
+        ("perplexity.ai", "Perplexity"),
+        ("cerebras.ai", "Cerebras"),
+        ("nvidia.com", "NVIDIA"),
+    )
+    for needle, name in table:
+        if needle in u:
+            return name
+    return "this endpoint"
+
+
+def _401_detail(url: str) -> str:
+    name = _host_name(url)
+    extra = ""
+    if "openai.com" in (url or "").lower():
+        extra = (
+            " If this key is for DeepSeek, Groq, OpenRouter, or another host, "
+            "choose that provider in Diagnostics — do not leave it on OpenAI."
+        )
+    return f"This key was rejected by {name} (401).{extra}"
+
+
 def check_openai_compat(base_url: str, key: str) -> dict:
     """Probe an OpenAI-compatible API endpoint with the supplied key."""
     base = base_url.rstrip("/")
@@ -85,10 +119,10 @@ def check_openai_compat(base_url: str, key: str) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=8) as r:
             data = json.loads(r.read())
-        models = [m.get("id", "") for m in data.get("data", [])]
+        models = [m.get("id", "") for m in data.get("data", []) if m.get("id")]
         return {
             "reachable": True,
-            "detail": f"Connected — {len(models)} model(s) available",
+            "detail": f"Connected to {_host_name(base)} — {len(models)} model(s) available",
             "models": models,
             "usable": True,
         }
@@ -96,13 +130,13 @@ def check_openai_compat(base_url: str, key: str) -> dict:
         if e.code == 401:
             return {
                 "reachable": True,
-                "detail": "Endpoint reachable — API key rejected (401 Unauthorized)",
+                "detail": _401_detail(base),
                 "models": [],
                 "usable": False,
             }
         return {
             "reachable": True,
-            "detail": f"Endpoint returned HTTP {e.code}",
+            "detail": f"{_host_name(base)} returned HTTP {e.code}",
             "models": [],
             "usable": False,
         }
@@ -170,8 +204,43 @@ def check_anthropic(key: str) -> dict:
 def _post_json(url: str, headers: dict, payload: dict, timeout: float) -> dict:
     body = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise RuntimeError(_401_detail(url)) from None
+        raise RuntimeError(f"{_host_name(url)} returned HTTP {e.code}") from None
+
+
+def _assistant_text(data: dict) -> str:
+    """Pull visible assistant text out of a chat-completions payload.
+
+    Thinking models may put tokens in `reasoning_content` and leave `content`
+    empty or null. Callers that need a formatter result must treat that as
+    failure, not as a blank document.
+    """
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("The model returned no choices.")
+    msg = choices[0].get("message") or {}
+    content = msg.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    if isinstance(content, list):
+        parts = [
+            p.get("text", "") for p in content
+            if isinstance(p, dict) and p.get("type") in (None, "text")
+        ]
+        joined = "".join(parts)
+        if joined.strip():
+            return joined
+    finish = choices[0].get("finish_reason")
+    raise RuntimeError(
+        "The model returned no text"
+        + (f" (finish_reason={finish})" if finish else "")
+        + ". Try a non-reasoning chat model, or pick Auto."
+    )
 
 
 def chat_openai_compat(
@@ -199,8 +268,19 @@ def chat_openai_compat(
     }
     if max_tokens and max_tokens > 0:
         payload["max_tokens"] = int(max_tokens)
-    data = _post_json(f"{base}/chat/completions", headers, payload, timeout)
-    return data["choices"][0]["message"]["content"]
+    # DeepSeek-V4 defaults to thinking mode; reasoning tokens consume max_tokens
+    # and the formatter gets an empty `content`. Cleanup is not a reasoning task.
+    if "deepseek.com" in base.lower():
+        payload["thinking"] = {"type": "disabled"}
+    try:
+        data = _post_json(f"{base}/chat/completions", headers, payload, timeout)
+    except RuntimeError as exc:
+        # Older DeepSeek-compatible proxies reject the thinking field.
+        if payload.pop("thinking", None) is not None and "HTTP 400" in str(exc):
+            data = _post_json(f"{base}/chat/completions", headers, payload, timeout)
+        else:
+            raise
+    return _assistant_text(data)
 
 
 def chat_ollama(
@@ -278,12 +358,30 @@ def chat_anthropic(
     return "".join(parts)
 
 
+def _pick_cleanup_model(models: list[str]) -> str:
+    """Prefer a fast chat/flash model; skip dedicated reasoners for cleanup."""
+    skip = ("reasoner", "o1-", "o3-", "o4-")
+    scored: list[tuple[int, str]] = []
+    for m in models:
+        low = m.lower()
+        if any(s in low for s in skip):
+            continue
+        score = 0
+        if any(k in low for k in ("flash", "chat", "mini", "haiku", "turbo")):
+            score += 2
+        if "pro" in low:
+            score -= 1
+        scored.append((score, m))
+    scored.sort(key=lambda x: -x[0])
+    return scored[0][1] if scored else models[0]
+
+
 def first_model_openai_compat(base_url: str, key: str) -> str:
     res = check_openai_compat(base_url, key)
     models = res.get("models") or []
     if not models:
         raise RuntimeError("No models available from the configured endpoint.")
-    return models[0]
+    return _pick_cleanup_model(models)
 
 
 def first_model_anthropic(key: str) -> str:

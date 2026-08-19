@@ -67,6 +67,66 @@ def _progress(stage: str, frac: float | None = None) -> None:
     })
 
 
+def _friendly_conversion_error(exc: Exception) -> tuple[str, str]:
+    """Return (detail, suggested_action) — readable, not raw exception names."""
+    blob = f"{type(exc).__name__} {exc}".lower()
+    if "password" in blob or "encrypted" in blob:
+        return (
+            "This file is password-protected.",
+            "Unlock it, save an unprotected copy, then try again.",
+        )
+    if (
+        "pdfsyntax" in blob
+        or "no /root" in blob
+        or "eof marker" in blob
+        or "startxref" in blob
+        or ("xref" in blob and "pdf" in blob)
+    ):
+        return (
+            "This PDF is damaged or not a real PDF.",
+            "Open it in a PDF reader to check, or export it again from the original app.",
+        )
+    if "badzipfile" in blob or "not a zip" in blob or "truncated zip" in blob:
+        return (
+            "This Office file is damaged or incomplete.",
+            "Open it in Word, Excel, or PowerPoint, save a new copy, then try again.",
+        )
+    if "permission" in blob or "access is denied" in blob or "errno 13" in blob:
+        return (
+            "The file could not be read.",
+            "Close it if it is open in another app, then try again.",
+        )
+    return (
+        "The file could not be converted.",
+        "The file may be corrupted or contain content that can't be extracted. Try another file.",
+    )
+
+
+def _present_markdown(fmt: str, text: str) -> str:
+    """JSON/XML come through as raw text — wrap them so Preview renders as a code block."""
+    text = text or ""
+    if not text.strip():
+        return text
+    if fmt == "json":
+        body = text.strip()
+        if body.startswith("```"):
+            return text
+        try:
+            body = json.dumps(json.loads(body), indent=2, ensure_ascii=False)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+        return f"```json\n{body.rstrip()}\n```\n"
+    if fmt == "xml":
+        body = text.strip()
+        if body.startswith("```"):
+            return text
+        # HtmlConverter may already have turned XML into Markdown.
+        if body.startswith("<"):
+            return f"```xml\n{body}\n```\n"
+        return text
+    return text
+
+
 def main() -> None:
     raw = sys.stdin.readline()
     try:
@@ -108,7 +168,7 @@ def main() -> None:
                     r = md2.convert_stream(
                         f, stream_info=StreamInfo(extension=ext, charset="utf-8")
                     )
-            result_holder["markdown"] = r.text_content or ""
+            result_holder["markdown"] = _present_markdown(fmt, r.text_content or "")
         except Exception as exc:  # noqa: BLE001
             if llm_client:
                 # Fail soft: retry without LLM so the text result is never lost.
@@ -121,13 +181,14 @@ def main() -> None:
                 try:
                     from markitdown import MarkItDown as _MD
                     r2 = _MD().convert(path)
-                    result_holder["markdown"] = r2.text_content or ""
+                    result_holder["markdown"] = _present_markdown(fmt, r2.text_content or "")
                     result_holder["llm_notice"] = f"LLM image description unavailable: {safe_exc}"
                     return
                 except Exception as exc2:  # noqa: BLE001
-                    result_holder["error"] = f"LLM failed ({safe_exc}); fallback also failed ({exc2})"
+                    result_holder["error"] = exc2
+                    result_holder["llm_notice"] = f"LLM image description unavailable: {safe_exc}"
             else:
-                result_holder["error"] = str(exc)
+                result_holder["error"] = exc
 
     t = threading.Thread(target=run, daemon=True)
     t.start()
@@ -139,14 +200,12 @@ def main() -> None:
             _progress("extracting")
 
     if "error" in result_holder:
+        detail, action = _friendly_conversion_error(result_holder["error"])
         _write({"type": "result", "ok": False, "error": {
             "code": "CONVERSION_FAILED",
             "title": "Conversion failed",
-            "detail": result_holder["error"],
-            "suggested_action": (
-                "The file may be corrupted or contain content that can't be extracted. "
-                "Try another file."
-            ),
+            "detail": detail,
+            "suggested_action": action,
         }})
     else:
         warnings: list[str] = []

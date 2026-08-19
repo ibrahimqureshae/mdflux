@@ -4,7 +4,7 @@
 
 /** Core document formats — always available (provisioned at Stage 0). */
 export const CORE_EXTS = [
-  'pdf', 'docx', 'pptx', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub',
+  'pdf', 'docx', 'pptx', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub', 'txt', 'md',
 ];
 
 /** Image formats — converted via the optional OCR engine. */
@@ -25,4 +25,26 @@ export function isAudioExt(ext: string): boolean {
 /** Formats handled by a heavy optional engine (OCR / transcription) — slower, model loads on first use. */
 export function isHeavyExt(ext: string): boolean {
   return isImageExt(ext) || isAudioExt(ext);
+}
+
+/** File extension without the leading dot, lowercased. Empty if none. */
+export function extFromPath(path: string): string {
+  const base = path.split(/[\\/]/).pop() ?? '';
+  const i = base.lastIndexOf('.');
+  if (i <= 0 || i === base.length - 1) return '';
+  return base.slice(i + 1).toLowerCase();
+}
+
+/** Short drop-zone / badge label for an extension. */
+export function formatLabel(ext: string): string {
+  const e = ext.replace(/^\./, '').toLowerCase();
+  if (!e) return 'Unknown';
+  if (isImageExt(e)) return 'Image';
+  if (isAudioExt(e)) return 'Audio';
+  const labels: Record<string, string> = {
+    pdf: 'PDF', docx: 'Word', pptx: 'PowerPoint', xlsx: 'Excel', xls: 'Excel',
+    html: 'HTML', htm: 'HTML', csv: 'CSV', json: 'JSON', xml: 'XML',
+    epub: 'EPUB', txt: 'Text', md: 'Markdown',
+  };
+  return labels[e] ?? e.toUpperCase();
 }

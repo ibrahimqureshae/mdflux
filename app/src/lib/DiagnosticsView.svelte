@@ -3,6 +3,13 @@
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { buildOutputFilename, type NamingCase } from './naming';
+  import {
+    API_PROVIDERS,
+    detectProviderFromKey,
+    inferProviderId,
+    providerById,
+    providerLabel,
+  } from './providers';
 
   // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +64,7 @@
     local_base_url: string;
     api_type: string;
     api_base_url: string;
+    api_provider?: string;
     api_key: string;
     cleanup_model: string;
     cleanup_seen: boolean;
@@ -101,7 +109,11 @@
   let localBaseUrl    = $state(untrack(() => config.local_base_url));
   let apiType         = $state(untrack(() => config.api_type));
   let apiBaseUrl      = $state(untrack(() => config.api_base_url));
+  let apiProvider     = $state(untrack(() =>
+    config.api_provider || inferProviderId(config.api_type, config.api_base_url),
+  ));
   let apiKey          = $state(untrack(() => config.api_key));
+  let keyHint         = $state<string | null>(null);
   let cleanupModel    = $state(untrack(() => config.cleanup_model));
   let conversionModel = $state(untrack(() => config.conversion_model ?? ''));
 
@@ -156,7 +168,10 @@
     }).then(fn => { if (dead) fn(); else unlistenInstall = fn; });
   });
 
-  onDestroy(() => { unlistenInstall?.(); });
+  onDestroy(() => {
+    unlistenInstall?.();
+    void persistApiFields();
+  });
 
   // ── Capabilities ───────────────────────────────────────────────────────────
 
@@ -185,10 +200,43 @@
     await onConfigChange({ ...config, llm_mode: m });
   }
 
-  async function saveApiType(type: string) {
-    apiType = type;
+  async function persistApiFields() {
+    await onConfigChange({
+      ...config,
+      api_provider: apiProvider,
+      api_type: apiType,
+      api_base_url: apiBaseUrl,
+      api_key: apiKey,
+    });
+  }
+
+  async function saveProvider(id: string) {
+    const p = providerById(id);
+    apiProvider = p.id;
+    apiType = p.apiType;
+    if (p.id !== 'custom') apiBaseUrl = p.baseUrl;
+    else if (!apiBaseUrl.trim()) apiBaseUrl = 'https://api.openai.com/v1';
     providerResult = null;
-    await onConfigChange({ ...config, api_type: type });
+    keyHint = null;
+    cleanupModel = '';
+    await onConfigChange({
+      ...config,
+      api_provider: apiProvider,
+      api_type: apiType,
+      api_base_url: apiBaseUrl,
+      api_key: apiKey,
+      cleanup_model: '',
+    });
+  }
+
+  async function applyKeyAndMaybeDetect() {
+    const detected = detectProviderFromKey(apiKey);
+    if (detected && detected !== apiProvider) {
+      keyHint = `This key looks like ${providerLabel(detected)} - switched provider.`;
+      await saveProvider(detected);
+      return;
+    }
+    await persistApiFields();
   }
 
   async function saveCleanupModel(m: string) {
@@ -271,12 +319,13 @@
           key: '',
         });
       } else if (config.llm_mode === 'api') {
-        await onConfigChange({
-          ...config,
-          api_type: apiType,
-          api_base_url: apiBaseUrl,
-          api_key: apiKey,
-        });
+        const detected = detectProviderFromKey(apiKey);
+        if (detected && detected !== apiProvider) {
+          keyHint = `This key looks like ${providerLabel(detected)} - switched provider.`;
+          await saveProvider(detected);
+        } else {
+          await persistApiFields();
+        }
         providerResult = await invoke<ProviderCheckResult>('check_provider', {
           provider: apiType === 'anthropic' ? 'api_anthropic' : 'api_openai_compat',
           baseUrl: apiBaseUrl,
@@ -609,25 +658,31 @@
 
       {:else}
         <div class="provider-fields">
-          <label class="field-label" for="api-type">Type</label>
-          <select id="api-type" class="field-select" value={apiType} onchange={(e) => saveApiType((e.target as HTMLSelectElement).value)}>
-            <option value="openai_compat">OpenAI-compatible</option>
-            <option value="anthropic">Anthropic</option>
+          <label class="field-label" for="api-provider">Provider</label>
+          <select
+            id="api-provider"
+            class="field-select"
+            value={apiProvider}
+            onchange={(e) => saveProvider((e.target as HTMLSelectElement).value)}
+          >
+            {#each API_PROVIDERS as p}
+              <option value={p.id}>{p.label}</option>
+            {/each}
           </select>
+          <p class="field-hint">{providerById(apiProvider).hint}</p>
 
-          {#if apiType === 'openai_compat'}
+          {#if apiProvider === 'custom'}
             <label class="field-label" for="api-url">Base URL</label>
             <input
               id="api-url"
               class="field-input"
               bind:value={apiBaseUrl}
-              placeholder="https://api.openai.com/v1"
+              placeholder="https://api.example.com/v1"
               spellcheck="false"
               autocomplete="off"
+              onblur={persistApiFields}
             />
-            <p class="field-hint">Works with OpenAI, Groq, Together, Mistral, Fireworks, and any OpenAI-compatible API</p>
-          {:else}
-            <p class="field-hint">Connects to api.anthropic.com — keys begin with sk-ant-</p>
+            <p class="field-hint">Any OpenAI-compatible /v1 endpoint</p>
           {/if}
 
           <label class="field-label" for="api-key">API Key</label>
@@ -639,12 +694,18 @@
               bind:value={apiKey}
               placeholder="Paste your key here"
               autocomplete="off"
+              onblur={applyKeyAndMaybeDetect}
             />
-            <button class="check-btn" title="Test the API key and list available models" onclick={runProviderCheck} disabled={providerChecking}>
+            <button class="check-btn" title="Test the API key and list available models" onclick={runProviderCheck} disabled={providerChecking || !apiKey.trim()}>
               {providerChecking ? 'Testing…' : 'Test'}
             </button>
           </div>
-          <p class="field-hint">Key stored in your app data folder and sent only to the endpoint above</p>
+          {#if keyHint}
+            <p class="field-hint rec-hint">{keyHint}</p>
+          {/if}
+          <p class="field-hint">
+            Key is stored on this machine and sent only to {apiProvider === 'anthropic' ? 'api.anthropic.com' : (apiBaseUrl || 'the selected provider')}.
+          </p>
 
           {#if providerResult}
             <div class="provider-result" class:result-ok={providerResult.usable} class:result-fail={!providerResult.usable}>

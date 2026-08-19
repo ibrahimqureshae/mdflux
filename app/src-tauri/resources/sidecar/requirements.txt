@@ -1,2 +1,2 @@
-markitdown[pdf,docx,pptx,xlsx,xls]
-openai
+markitdown[pdf,docx,pptx,xlsx,xls]>=0.1.7
+openai>=2.43,<3

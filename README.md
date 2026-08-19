@@ -7,10 +7,10 @@
 **Turn any document into clean, AI-ready Markdown.**
 Local-first · reads scanned PDFs · up to 6× fewer tokens than vision models
 
-**Works with** PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · XML · images · audio
+**Works with** PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · XML · TXT · MD · images · audio
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-3b82f6.svg)](LICENSE)
-[![Download v0.1.0](https://img.shields.io/badge/download-v0.1.0-3b82f6)](https://github.com/ibrahimqureshae/mdflux/releases/latest)
+[![Download v0.2.0](https://img.shields.io/badge/download-v0.2.0-3b82f6)](https://github.com/ibrahimqureshae/mdflux/releases/latest)
 [![Up to 6x fewer tokens](https://img.shields.io/badge/vs%20vision-up%20to%206%C3%97%20fewer%20tokens-3b82f6)](#the-proof-fewer-tokens-lower-cost)
 [![Platform](https://img.shields.io/badge/platform-Windows-3b82f6.svg)](https://github.com/ibrahimqureshae/mdflux/releases)
 [![Works offline](https://img.shields.io/badge/works-offline-3fb950)](#)
@@ -85,12 +85,23 @@ That's the full text recovered in about 5.7 times fewer tokens than the vision m
 |---|---|
 | 💸 **Fewer tokens, lower cost** | Clean Markdown costs about 2 to 6 times fewer tokens than sending pages to a vision model, so every LLM call that reads the document is cheaper. |
 | 🔒 **Local and private** | Your documents never leave your machine. No cloud, no API key, no account. |
-| 🔍 **Reads scanned PDFs** | Built-in OCR recovers text that plain extractors return as zero characters. |
+| 🔍 **Reads scanned PDFs** | Built-in OCR recovers text from scans that other tools treat as blank. |
 | 🧱 **Real structure** | Proper Markdown with headings, tables, and lists intact. Readable, greppable, diff-able. |
 | 🖥️ **No terminal needed** | Portable app. Unzip, run, click through a one-time setup. Done. |
-| 📦 **Many formats** | PDF, DOCX, PPTX, XLSX, EPUB, HTML, CSV, JSON, XML, images, and audio. |
+| 📦 **Many formats** | PDF, DOCX, PPTX, XLSX, EPUB, HTML, CSV, JSON, XML, TXT, Markdown, images, and audio. |
 | 🔁 **Batch a whole folder** | Convert everything at once, with progress, cancellation, and per-file diagnostics. |
-| 🧹 **Optional cleanup** | Off, rule-based, or an AI pass (local or API) to tidy up messy extractions. |
+| 🧹 **Optional cleanup** | Off, rule-based, or an AI pass (local or API). The **Changes** tab shows what cleanup added or removed. |
+
+---
+
+## What's new in 0.2.0
+
+- **Changes tab:** added and removed lines after cleanup.
+- **OCR:** newer on-device engine for scans.
+- **AI cleanup:** pick DeepSeek, OpenAI, Groq, or another provider in Diagnostics, then Test the key.
+- Drop `.txt` and `.md` like any other file.
+
+If you already had OCR from 0.1.0, reinstall it from Diagnostics.
 
 ---
 
@@ -113,13 +124,21 @@ That's the full text recovered in about 5.7 times fewer tokens than the vision m
 ```
 1. Drop a file or folder   →   PDF, Office, EPUB, scans, audio, and more
 2. Pick a cleanup mode      →   Off, rule-based, or AI (local or API)
-3. Get clean Markdown       →   Preview, copy, or save as .md. 100% offline.
+3. Get clean Markdown       →   Preview, Source, Split, or Changes. Copy or save as .md.
 ```
 
 The first launch sets up a private, self-contained Python environment (one time, needs internet). Every conversion after that runs fully offline.
 
 <div align="center">
 <img src="docs/media/screenshot-cleanup-modes.png" width="560" alt="MDFlux cleanup mode selector: Off, Rule-based, Local AI, and API"/>
+<br/>
+<sub>Cleanup modes: Off, rule-based, or an AI pass, chosen per run.</sub>
+</div>
+
+<div align="center">
+<img src="docs/media/screenshot-changes.png" width="560" alt="Changes tab after cleanup, showing added and removed lines"/>
+<br/>
+<sub>The Changes tab after cleanup: what was added or removed, line by line.</sub>
 </div>
 
 ---
@@ -214,6 +233,8 @@ To verify your download, check the SHA-256 posted on the [release page](https://
 **"Windows protected your PC"**: That's SmartScreen reacting to an unsigned build. Click "More info" then "Run anyway". The build is open source; code signing is on the roadmap.
 
 **The first launch is downloading for a while**: That's the one-time setup of the local Python environment. It only happens once, and every launch after is instant and offline.
+
+**AI cleanup says the key was rejected (401)**: The key is valid for a *provider*, not for "any API". In Diagnostics, set **Provider** to match the key (DeepSeek, Groq, OpenRouter, …) then Test. A DeepSeek key sent to OpenAI will always 401. Unambiguous prefixes (`sk-ant-`, `gsk_`, `sk-or-`, `AIza`, `xai-`, `pplx-`) switch the provider automatically; OpenAI and DeepSeek both start with `sk-`, so those you pick yourself.
 
 **A conversion finished with a warning or looks empty**: Open the diagnostics panel. It tells you what's installed and healthy and what went wrong, so you get a clear next step instead of a silent empty file.
 

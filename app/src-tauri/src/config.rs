@@ -12,6 +12,10 @@ pub struct AppConfig {
     pub api_type: String, // "openai_compat" | "anthropic"
     #[serde(default = "default_api_base_url")]
     pub api_base_url: String,
+    /// Named preset: openai, deepseek, groq, anthropic, …, custom.
+    /// Empty on old configs — inferred from api_type + api_base_url on load.
+    #[serde(default)]
+    pub api_provider: String,
     #[serde(default)]
     pub api_key: String,
     /// Stage 5: model used for the optional LLM cleanup pass (empty = auto-pick first).
@@ -65,6 +69,47 @@ fn default_api_type() -> String {
 fn default_api_base_url() -> String {
     "https://api.openai.com/v1".into()
 }
+fn default_api_provider() -> String {
+    "openai".into()
+}
+
+fn infer_api_provider(cfg: &AppConfig) -> String {
+    if cfg.api_type == "anthropic" {
+        return "anthropic".into();
+    }
+    let u = cfg
+        .api_base_url
+        .trim()
+        .trim_end_matches('/')
+        .to_lowercase();
+    let table: &[(&str, &str)] = &[
+        ("https://api.openai.com/v1", "openai"),
+        ("https://api.deepseek.com/v1", "deepseek"),
+        ("https://api.deepseek.com", "deepseek"),
+        ("https://api.groq.com/openai/v1", "groq"),
+        ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini"),
+        ("https://openrouter.ai/api/v1", "openrouter"),
+        ("https://api.together.xyz/v1", "together"),
+        ("https://api.mistral.ai/v1", "mistral"),
+        ("https://api.fireworks.ai/inference/v1", "fireworks"),
+        ("https://api.x.ai/v1", "xai"),
+        ("https://api.perplexity.ai", "perplexity"),
+        ("https://api.cerebras.ai/v1", "cerebras"),
+        ("https://integrate.api.nvidia.com/v1", "nvidia"),
+    ];
+    for (url, id) in table {
+        if u == *url {
+            return (*id).into();
+        }
+    }
+    if u.contains("openai.com") {
+        return "openai".into();
+    }
+    if u.is_empty() {
+        return default_api_provider();
+    }
+    "custom".into()
+}
 fn default_extract_images() -> bool {
     true
 }
@@ -88,6 +133,7 @@ impl Default for AppConfig {
             local_base_url: default_local_base_url(),
             api_type: default_api_type(),
             api_base_url: default_api_base_url(),
+            api_provider: default_api_provider(),
             api_key: String::new(),
             cleanup_model: String::new(),
             cleanup_seen: false,
@@ -114,7 +160,13 @@ fn config_path(app: &AppHandle) -> PathBuf {
 pub fn load(app: &AppHandle) -> AppConfig {
     let path = config_path(app);
     match std::fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Ok(content) => {
+            let mut cfg: AppConfig = serde_json::from_str(&content).unwrap_or_default();
+            if cfg.api_provider.trim().is_empty() {
+                cfg.api_provider = infer_api_provider(&cfg);
+            }
+            cfg
+        }
         Err(_) => AppConfig::default(),
     }
 }
