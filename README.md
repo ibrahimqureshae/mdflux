@@ -10,13 +10,19 @@ Local-first · reads scanned PDFs · up to 6× fewer tokens than vision models
 **Works with** PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · XML · TXT · MD · images · audio
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-3b82f6.svg)](LICENSE)
-[![Download v0.2.0](https://img.shields.io/badge/download-v0.2.0-3b82f6)](https://github.com/ibrahimqureshae/mdflux/releases/latest)
+[![Download v0.3.0](https://img.shields.io/badge/download-v0.3.0-3b82f6)](https://github.com/ibrahimqureshae/mdflux/releases/latest)
 [![Up to 6x fewer tokens](https://img.shields.io/badge/vs%20vision-up%20to%206%C3%97%20fewer%20tokens-3b82f6)](#the-proof-fewer-tokens-lower-cost)
-[![Platform](https://img.shields.io/badge/platform-Windows-3b82f6.svg)](https://github.com/ibrahimqureshae/mdflux/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20(x64)-3b82f6.svg)](https://github.com/ibrahimqureshae/mdflux/releases)
 [![Works offline](https://img.shields.io/badge/works-offline-3fb950)](#)
 [![GitHub stars](https://img.shields.io/github/stars/ibrahimqureshae/mdflux?style=flat&label=stars&color=3b82f6)](https://github.com/ibrahimqureshae/mdflux/stargazers)
 
-[**⬇️ Download for Windows**](https://github.com/ibrahimqureshae/mdflux/releases/latest)
+[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Lite_x64-2563EB?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_lite.zip)
+&nbsp;&nbsp;
+[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-Lite_x64-F59E0B?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_lite.tar.gz)
+
+[Full / offline-ready downloads](https://github.com/ibrahimqureshae/mdflux/releases/latest)
+&nbsp;&nbsp;·&nbsp;&nbsp;
+[**Cross-platform docs**](docs/cross-platform/README.md)
 &nbsp;&nbsp;·&nbsp;&nbsp;
 [Website](https://ibrahimqureshae.github.io/mdflux/)
 &nbsp;&nbsp;·&nbsp;&nbsp;
@@ -72,7 +78,13 @@ That's the full text recovered in about 5.7 times fewer tokens than the vision m
 
 <div align="center">
 
-[**⬇️ Download for Windows**](https://github.com/ibrahimqureshae/mdflux/releases/latest)
+[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Lite_x64-2563EB?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_lite.zip)
+&nbsp;
+[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-Lite_x64-F59E0B?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_lite.tar.gz)
+
+[**Full / offline-ready downloads**](https://github.com/ibrahimqureshae/mdflux/releases/latest)
+&nbsp;·&nbsp;
+[**Editions &amp; platforms**](docs/cross-platform/README.md)
 &nbsp;·&nbsp; Free &amp; MIT-licensed &nbsp;·&nbsp; No account, no cloud
 
 </div>
@@ -93,6 +105,17 @@ That's the full text recovered in about 5.7 times fewer tokens than the vision m
 | 🧹 **Optional cleanup** | Off, rule-based, or an AI pass (local or API). The **Changes** tab shows what cleanup added or removed. |
 
 ---
+
+## What's new in 0.3.0
+
+- **Cross-platform release matrix:** Windows and Linux x64 (glibc) Lite and Full archives.
+- **Lite and Full editions:** Lite provisions dependencies transactionally on first launch;
+  Full bundles an immutable runtime and never installs packages at runtime.
+- **Runtime reliability:** recoverable provisioning, offline-ready Full operation, and clearer
+  runtime health and repair diagnostics.
+- **AI cleanup:** more predictable cleanup behavior and clearer provider/runtime diagnostics.
+- **Issue fixes:** AI cleanup timeout resilience (#25), Linux support (#28), and OCR
+  dependency/provisioning reliability through Lite recovery and the bundled Full runtime (#30).
 
 ## What's new in 0.2.0
 
@@ -194,11 +217,36 @@ On already-clean files the output is close to identical, because under the hood 
 
 ---
 
+## Editions and platforms
+
+MDFlux is **one cross-platform product** with two editions on each supported platform:
+
+| Edition | Download size | Python setup | Best for |
+| --- | --- | --- | --- |
+| **Lite** | Smaller archive | One-time transactional provisioning (internet on first launch) | Most users; smaller download |
+| **Full** | Larger archive | Immutable bundled runtime — no package installs at runtime | Offline / air-gapped use |
+
+Supported platform identifiers: `windows-x64` and `linux-x64-glibc` (x64 only). Speech model
+weights are on demand in **both** editions.
+
+> **Release status:** v0.3.0 introduces verified Windows and Linux x64 Lite and Full archives.
+> Windows v0.2.0 remains available under the legacy Lite-style name
+> `MDFlux_<version>_portable.zip`. Each v0.3.0 archive is verified before the release is
+> published; see [docs/cross-platform/README.md](docs/cross-platform/README.md).
+
+Full details: [editions](docs/cross-platform/editions.md) ·
+[platforms & support](docs/cross-platform/platforms-and-support.md) ·
+[releases & verification](docs/cross-platform/releases-and-verification.md)
+
+---
+
 ## Getting started
 
-**Requirements:** Windows 10 or 11 (x64) with the WebView2 runtime, which ships with current Windows. The first launch needs internet to set up a local Python environment; everything after runs offline. macOS is on the [roadmap](#roadmap).
+**Requirements:** Windows 10 or 11 (x64) with WebView2 (ships with current Windows). Linux x64
+(glibc, Ubuntu 22.04+) needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`) — including **Full** edition
+builds. macOS is on the [roadmap](#roadmap).
 
-**1. Download and run.** Get the portable zip from [Releases](https://github.com/ibrahimqureshae/mdflux/releases/latest), extract it anywhere, and double-click `MDFlux.exe`. No installer, no admin rights.
+**1. Download and run.** Get the portable archive from [Releases](https://github.com/ibrahimqureshae/mdflux/releases/latest). On Windows, extract the zip and double-click `MDFlux.exe`. No installer, no admin rights. Linux Lite/Full tarballs with frozen names are **pending** the cross-platform release — see [setup guide](docs/cross-platform/setup-ubuntu.md) for contributor builds.
 
 > **SmartScreen warning?** The build is open source and unsigned. Click "More info" then "Run anyway". You'll need the WebView2 runtime, already on current Windows 10/11.
 
@@ -214,7 +262,7 @@ On already-clean files the output is close to identical, because under the hood 
 <img src="docs/media/converting-to-markdown.gif" width="720" alt="Converting a document to clean Markdown"/>
 </div>
 
-To verify your download, check the SHA-256 posted on the [release page](https://github.com/ibrahimqureshae/mdflux/releases/latest).
+To verify your download, check the SHA-256 posted on the [release page](https://github.com/ibrahimqureshae/mdflux/releases/latest). After cross-platform integration, use the [artifact verifier](docs/cross-platform/releases-and-verification.md) for Lite and Full archives.
 
 ---
 
@@ -231,6 +279,8 @@ To verify your download, check the SHA-256 posted on the [release page](https://
 ## Troubleshooting
 
 **"Windows protected your PC"**: That's SmartScreen reacting to an unsigned build. Click "More info" then "Run anyway". The build is open source; code signing is on the roadmap.
+
+**Linux says a WebKit library is missing**: Install the runtime WebKitGTK package (on Ubuntu/Lubuntu 24.04: `sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 xdg-utils`). That is the Linux equivalent of WebView2.
 
 **The first launch is downloading for a while**: That's the one-time setup of the local Python environment. It only happens once, and every launch after is instant and offline.
 
@@ -262,7 +312,7 @@ The full list lives in [ROADMAP.md](ROADMAP.md). Open an issue if you want to sh
 
 ## For developers
 
-MDFlux is a Tauri 2 (Rust) shell around a Python sidecar (MarkItDown + OCR + audio), with a Svelte 5 front end. You'll need Node, Rust (stable), and the Tauri prerequisites for your OS; then clone it, run `npm install`, and `npm run tauri dev`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full build, run, and test steps, the project layout, and the tech stack.
+MDFlux is a Tauri 2 (Rust) shell around a Python sidecar (MarkItDown + OCR + audio), with a Svelte 5 front end. You'll need Node 20+, Rust (stable), and the Tauri prerequisites for your OS; then clone it, run `npm install`, and `npm run tauri dev`. See [CONTRIBUTING.md](CONTRIBUTING.md) for build steps and [docs/cross-platform/setup-ubuntu.md](docs/cross-platform/setup-ubuntu.md) for Linux. Optional [devenv](docs/cross-platform/setup-devenv.md) setup is planned for contributors who want a pinned shell.
 
 ---
 

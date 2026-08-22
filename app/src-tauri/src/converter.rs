@@ -1,6 +1,6 @@
 /// Manages the persistent Python sidecar process.
 ///
-/// Stage 4 redesign: a background reader task reads stdout continuously and
+/// A background reader task reads stdout continuously and
 /// routes each NDJSON line to a per-request channel keyed by the `id` field.
 /// This lets multiple concurrent `send_streaming` callers coexist on the same
 /// sidecar process without stealing each other's lines.
@@ -57,9 +57,7 @@ impl SidecarManager {
 
         if needs_spawn {
             if let Some(mut old) = guard.take() {
-                // Explicitly kill the child before dropping — tokio's Child does NOT
-                // kill on drop by default, so without this the python.exe would orphan.
-                let _ = old.child.start_kill();
+                let _ = old.child.kill().await;
                 old.reader_task.abort();
                 old.stderr_task.abort();
             }
@@ -84,10 +82,7 @@ impl SidecarManager {
         request: &Value,
         on_progress: impl Fn(Value) + Send,
     ) -> Result<Value, String> {
-        let id = request["id"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let id = request["id"].as_str().unwrap_or("").to_string();
 
         // Clone Arcs without holding the inner lock during the whole call.
         let (stdin_arc, router_arc, stderr_tail) = {
@@ -130,9 +125,7 @@ impl SidecarManager {
         let result: Result<Value, String> = loop {
             match tokio::time::timeout(idle, rx.recv()).await {
                 Err(_) => {
-                    break Err(
-                        "Sidecar went silent for 150 seconds. Restart the app.".to_string(),
-                    )
+                    break Err("Sidecar went silent for 150 seconds. Restart the app.".to_string())
                 }
                 Ok(None) => {
                     let tail = stderr_tail.lock().await;
@@ -144,7 +137,7 @@ impl SidecarManager {
                             tail.join("\n")
                         )
                     };
-                    break Err(detail)
+                    break Err(detail);
                 }
                 Ok(Some(val)) => {
                     if val.get("type").and_then(|v| v.as_str()) == Some("progress") {
@@ -186,10 +179,9 @@ impl SidecarManager {
     pub async fn kill_sidecar(&self) {
         let mut guard = self.inner.lock().await;
         if let Some(mut old) = guard.take() {
-            // Explicitly kill — without this the child process would orphan on Windows
-            // (tokio's Child does not kill on drop by default). kill_on_drop(true) on the
-            // spawn is a belt-and-suspenders backstop; this is the deterministic path.
-            let _ = old.child.start_kill();
+            // Wait for termination so Windows releases loaded .pyd/.dll files before
+            // a repair or optional-engine install mutates the Python environment.
+            let _ = old.child.kill().await;
             old.reader_task.abort();
             old.stderr_task.abort();
         }

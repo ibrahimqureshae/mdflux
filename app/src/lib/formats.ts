@@ -2,7 +2,7 @@
 // Keep in sync with the backend lists: `capabilities.py` (sidecar routing) and
 // `lib.rs` (CORE_EXTS / OCR_EXTS / AUDIO_EXTS). When you add a format, update all three.
 
-/** Core document formats — always available (provisioned at Stage 0). */
+/** Core document formats that are always available. */
 export const CORE_EXTS = [
   'pdf', 'docx', 'pptx', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub', 'txt', 'md',
 ];

@@ -1,0 +1,5 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+# Update this input only with `devenv update`; commit the resulting lockfile.
+inputs:
+  nixpkgs:
+    url: github:NixOS/nixpkgs/addf7cf5f383a3101ecfba091b98d0a1263dc9b8

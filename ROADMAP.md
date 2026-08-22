@@ -1,34 +1,34 @@
 # MDFlux Roadmap
 
-This is a living document — directional, not a promise of dates. Issues and PRs are
-welcome on any of these; open one to shape the priority.
+This is a living, directional roadmap rather than a promise of dates. Issues and pull requests
+are welcome; open one to help shape priorities.
 
-## Now (v0.1.x)
+## Current focus
 
-- Windows portable build, hardened across 8 engineering stages. ✅ shipped in v0.1.0.
-- Stability + diagnostics polish based on early-user reports.
+- Maintain one shared codebase for Windows x64 and Linux x64 (glibc).
+- Improve stability and diagnostics based on user reports.
+- Keep Lite and Full portable releases reliable and easy to verify.
 
-## Next
+## Planned
 
-- **🔌 MCP server** — expose MDFlux conversion as an MCP tool so Claude Code and other
-  agents can turn documents into Markdown without leaving the chat.
-- **⌨️ CLI** — a scriptable, headless `mdflux convert` for pipelines and CI.
-- **🍎 macOS build** — separate arm64 and Intel sidecar builds.
-- **🔏 Code signing** — sign the Windows build to remove the SmartScreen warning
-  (and notarize the macOS build once it exists).
+- Linux x64 glibc Lite and Full tarballs.
+- Windows Lite and Full portable zips with consistent release metadata.
+- An MCP server and a scriptable, headless `mdflux convert` command.
+- macOS builds for Apple Silicon and Intel.
+- Windows code signing and macOS notarization.
+- An optional reproducible contributor shell using devenv.
 
-## Later / exploring
+## Exploring
 
 - More OCR languages and tuning presets.
-- Optional structured outputs (front-matter, JSON sidecars) for downstream pipelines.
+- Optional structured outputs such as front matter and JSON sidecars.
 - Pluggable cleanup profiles.
 
-## Out of scope (by design)
+## Out of scope by design
 
-- Cloud-hosted conversion. MDFlux is local-first; cloud features will only ever be
-  clearly-marked, opt-in seams — never a hardcoded dependency.
-
----
+- ARM64 and musl-based first-class releases.
+- AppImage, Flatpak, and native `.deb` packages in the current release line.
+- Cloud-hosted conversion. MDFlux is local-first; any cloud features would be clearly marked and opt-in.
 
 Have an idea? [Open an issue](https://github.com/ibrahimqureshae/mdflux/issues) or start a
-discussion. See [CONTRIBUTING.md](CONTRIBUTING.md) to get a dev build running.
+discussion. See [CONTRIBUTING.md](CONTRIBUTING.md) to get a development build running.

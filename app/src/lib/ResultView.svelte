@@ -8,6 +8,10 @@
   import { renderMarkdown } from './mdpreview';
   import { buildOutputFilename, type NamingCase } from './naming';
   import { onDestroy, onMount } from 'svelte';
+  import {
+    aiNoticePresentation,
+    classifyAiNotice,
+  } from './runtime-status';
 
   let {
     markdown,
@@ -102,6 +106,9 @@
       : (warnings.length ? warnings.join(' ') : ''),
   );
 
+  const aiNoticeKind = $derived(classifyAiNotice(cleanup.aiNotice));
+  const aiNoticeUi = $derived(aiNoticePresentation(aiNoticeKind));
+
   function setView(v: ViewMode) { cleanup.viewMode = v; }
 
   // ── Cleanup method ─────────────────────────────────────────────────────────
@@ -155,7 +162,7 @@
       } else {
         cleanup.aiCleaned = markdown;
         cleanup.aiApplied = false;
-        cleanup.aiNotice = `AI cleanup failed: ${e}`;
+        cleanup.aiNotice = `AI cleanup unavailable: ${e} — kept the original text.`;
       }
     } finally {
       cleanup.running = false;
@@ -360,7 +367,12 @@
           {#if cleanup.aiApplied}<span class="ok">AI cleanup applied.</span>{/if}
           <button class="link-btn" title="Run the AI cleanup again on the original text" onclick={runAi}>Run again</button>
         </p>
-        {#if cleanup.aiNotice}<p class="warn">{cleanup.aiNotice}</p>{/if}
+        {#if cleanup.aiNotice}
+          <p class="ai-notice {aiNoticeUi.className}" role="status">
+            {#if aiNoticeUi.prefix}<span class="ai-notice-label">{aiNoticeUi.prefix}:</span>{/if}
+            {cleanup.aiNotice}
+          </p>
+        {/if}
       {/if}
     {/if}
   </div>
@@ -509,6 +521,30 @@
   .muted { color: var(--text-muted); margin-left: var(--sp-1); }
   .ok { color: var(--green); }
   .warn { font-size: 11px; color: var(--amber); line-height: 1.5; margin: 0; }
+  .ai-notice {
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0;
+    padding: var(--sp-2);
+    border-radius: var(--sp-1);
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-secondary);
+  }
+  .ai-notice-label { font-weight: 600; margin-right: 4px; }
+  .notice-cancelled { border-color: color-mix(in srgb, var(--text-muted) 40%, transparent); }
+  .notice-inactivity {
+    color: var(--amber);
+    border-color: color-mix(in srgb, var(--amber) 35%, transparent);
+    background: color-mix(in srgb, var(--amber) 8%, var(--surface-1));
+  }
+  .notice-provider {
+    color: var(--red);
+    border-color: color-mix(in srgb, var(--red) 30%, transparent);
+    background: color-mix(in srgb, var(--red) 8%, var(--surface-1));
+  }
+  .notice-empty { color: var(--text-secondary); }
+  .notice-other { color: var(--amber); }
 
   .spinner-inline {
     display: inline-block; width: 11px; height: 11px;

@@ -1,4 +1,4 @@
-// Stage 5 — shared cleanup rule metadata and defaults.
+// Shared cleanup rule metadata and defaults.
 // Mirrors the sidecar's RULE_ORDER (cleanup.py). Single source of truth for the UI.
 
 export interface CleanupRuleDef {

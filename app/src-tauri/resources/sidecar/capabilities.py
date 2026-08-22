@@ -12,7 +12,7 @@ from pathlib import Path
 
 SIDECAR_VERSION = "0.6.0"
 
-# Core formats — provisioned at Stage 0 and always available.
+# Core formats — always available.
 # module: None means no extra needed beyond markitdown core.
 _CORE_FORMATS: list[dict] = [
     {

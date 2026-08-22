@@ -1,0 +1,3 @@
+tests/release-fixtures/samples/*.pdf binary
+*.lock text eol=lf
+*.sh text eol=lf

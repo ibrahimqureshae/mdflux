@@ -18,7 +18,7 @@
   // Lifted to the parent so it survives view changes (e.g. opening Diagnostics).
   export interface StagingState {
     outputFolder: string | null;
-    outputRule: OutputRule;           // Stage 7 — per-run output location rule
+    outputRule: OutputRule;           // Per-run output location rule
     method: CleanupMethod;
     rules: Record<string, boolean>;
   }

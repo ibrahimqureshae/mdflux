@@ -1,0 +1,6 @@
+# Single dependency graph for the immutable Full/Offline runtime.
+# Resolving these together prevents optional components from upgrading or
+# downgrading packages behind one another at runtime.
+-r requirements.txt
+-r requirements-ocr.in
+-r requirements-audio.in

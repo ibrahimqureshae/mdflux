@@ -5,15 +5,38 @@ Two groups of functions:
 - Health checks (`check_*`) — pure blocking, run via run_in_executor. Never send
   document content; connectivity + credentials only. Degrade gracefully (return a
   dict, never raise).
-- Chat / cleanup invocation (`chat_*`, `first_model_*`) — added in Stage 5 for the
+- Chat / cleanup invocation (`chat_*`, `first_model_*`) — async streaming for the
   optional LLM cleanup pass. These DO send document text and DO raise on failure, so
-  the caller (cleanup.llm_clean) can fail soft and fall back to deterministic output.
+  the caller (cleanup.llm_clean) can fail soft and keep the original output.
 
 Rule across both groups: never log or mention the API key in any return value.
 """
+import asyncio
 import json
 import urllib.error
 import urllib.request
+
+import httpx
+
+
+DEFAULT_IDLE_TIMEOUT_SECS: float = 180.0
+DEFAULT_FALLBACK_TIMEOUT_SECS: float = 600.0
+
+
+class ProviderIdleTimeout(RuntimeError):
+    """The provider stopped producing response data for too long."""
+
+
+class ProviderEmptyOutput(RuntimeError):
+    """The provider completed a response without visible assistant text."""
+
+
+class ProviderMalformedResponse(RuntimeError):
+    """The provider response could not be decoded as its advertised protocol."""
+
+
+class _StreamingUnsupported(RuntimeError):
+    """Internal signal used to retry a request without streaming."""
 
 
 def _safe_exc(exc: Exception) -> str:
@@ -198,19 +221,8 @@ def check_anthropic(key: str) -> dict:
         }
 
 
-# ── Chat / cleanup invocation (Stage 5) ─────────────────────────────────────────
+# ── Chat / cleanup invocation ────────────────────────────────────────────────────
 # These raise on failure; the caller fails soft.
-
-def _post_json(url: str, headers: dict, payload: dict, timeout: float) -> dict:
-    body = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            raise RuntimeError(_401_detail(url)) from None
-        raise RuntimeError(f"{_host_name(url)} returned HTTP {e.code}") from None
 
 
 def _assistant_text(data: dict) -> str:
@@ -220,9 +232,13 @@ def _assistant_text(data: dict) -> str:
     empty or null. Callers that need a formatter result must treat that as
     failure, not as a blank document.
     """
+    if not isinstance(data, dict):
+        raise ProviderMalformedResponse("The provider returned a malformed response.")
     choices = data.get("choices") or []
     if not choices:
-        raise RuntimeError("The model returned no choices.")
+        raise ProviderMalformedResponse("The provider returned no choices.")
+    if not isinstance(choices[0], dict):
+        raise ProviderMalformedResponse("The provider returned a malformed choice.")
     msg = choices[0].get("message") or {}
     content = msg.get("content")
     if isinstance(content, str) and content.strip():
@@ -236,18 +252,178 @@ def _assistant_text(data: dict) -> str:
         if joined.strip():
             return joined
     finish = choices[0].get("finish_reason")
-    raise RuntimeError(
+    raise ProviderEmptyOutput(
         "The model returned no text"
         + (f" (finish_reason={finish})" if finish else "")
         + ". Try a non-reasoning chat model, or pick Auto."
     )
 
 
-def chat_openai_compat(
-    base_url: str, key: str, model: str, system: str, user: str, timeout: float,
-    max_tokens: int | None = None,
+def _streaming_rejected(status: int, body: str) -> bool:
+    if status not in (400, 404, 405, 422, 501):
+        return False
+    low = body.lower()
+    return "stream" in low and any(
+        marker in low for marker in (
+            "not support", "unsupported", "not implemented", "not allowed",
+            "unknown field", "unknown parameter", "unrecognized",
+        )
+    )
+
+
+async def _raise_http_error(response: httpx.Response) -> None:
+    if response.is_success:
+        return
+    body = (await response.aread()).decode(errors="replace")
+    if response.status_code == 401:
+        raise RuntimeError(_401_detail(str(response.url)))
+    if _streaming_rejected(response.status_code, body):
+        raise _StreamingUnsupported()
+    raise RuntimeError(
+        f"{_host_name(str(response.url))} returned HTTP {response.status_code}"
+    )
+
+
+def _timeout(idle_timeout: float) -> httpx.Timeout:
+    # The read timeout resets whenever another response chunk arrives. A healthy
+    # generation can run indefinitely; only a silent provider is considered stuck.
+    return httpx.Timeout(
+        timeout=None,
+        connect=10.0,
+        read=idle_timeout,
+        write=30.0,
+        pool=10.0,
+    )
+
+
+def _check_cancelled(cancel_event: asyncio.Event | None) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise asyncio.CancelledError()
+
+
+async def _post_json_async(
+    url: str,
+    headers: dict,
+    payload: dict,
+    timeout: float,
+    cancel_event: asyncio.Event | None,
+) -> dict:
+    _check_cancelled(cancel_event)
+    try:
+        async with httpx.AsyncClient(timeout=_timeout(timeout)) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            await _raise_http_error(response)
+            _check_cancelled(cancel_event)
+            try:
+                data = response.json()
+            except json.JSONDecodeError as exc:
+                raise ProviderMalformedResponse(
+                    "The provider returned malformed JSON."
+                ) from exc
+            if not isinstance(data, dict):
+                raise ProviderMalformedResponse(
+                    "The provider returned a malformed JSON response."
+                )
+            return data
+    except httpx.ReadTimeout as exc:
+        raise ProviderIdleTimeout(
+            f"The provider sent no response data for {timeout:g} seconds."
+        ) from exc
+
+
+def _openai_delta_text(event: dict) -> str:
+    choices = event.get("choices") or []
+    if not choices:
+        return ""
+    content = (choices[0].get("delta") or {}).get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") in (None, "text")
+        )
+    return ""
+
+
+def _anthropic_text(data: dict) -> str:
+    """Return visible text from a non-streaming Anthropic response safely."""
+    if not isinstance(data, dict):
+        raise ProviderMalformedResponse("The provider returned a malformed response.")
+    content = data.get("content")
+    if not isinstance(content, list):
+        raise ProviderMalformedResponse("The provider returned malformed content.")
+    return "".join(
+        block.get("text", "")
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
+async def _stream_openai(
+    url: str,
+    headers: dict,
+    payload: dict,
+    idle_timeout: float,
+    cancel_event: asyncio.Event | None,
+    activity_cb=None,
 ) -> str:
-    """POST {base}/chat/completions; return the assistant message content.
+    pieces: list[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=_timeout(idle_timeout)) as client:
+            async with client.stream("POST", url, headers=headers, json=payload) as response:
+                await _raise_http_error(response)
+                content_type = response.headers.get("content-type", "").lower()
+                if "application/json" in content_type:
+                    # Some compatible servers ignore streaming and send an ordinary
+                    # JSON response. Accept it without making a duplicate request.
+                    try:
+                        data = json.loads(await response.aread())
+                    except json.JSONDecodeError as exc:
+                        raise ProviderMalformedResponse(
+                            "The provider returned malformed JSON."
+                        ) from exc
+                    return _assistant_text(data)
+                malformed_event = False
+                async for line in response.aiter_lines():
+                    _check_cancelled(cancel_event)
+                    if not line or line.startswith(":"):
+                        continue
+                    data = line[5:].strip() if line.startswith("data:") else line.strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        piece = _openai_delta_text(json.loads(data))
+                    except json.JSONDecodeError:
+                        malformed_event = True
+                        continue
+                    if piece:
+                        pieces.append(piece)
+                        if activity_cb:
+                            activity_cb()
+                if malformed_event:
+                    raise ProviderMalformedResponse(
+                        "The provider returned malformed streaming data."
+                    )
+    except httpx.ReadTimeout as exc:
+        raise ProviderIdleTimeout(
+            f"The provider sent no response data for {idle_timeout:g} seconds."
+        ) from exc
+    result = "".join(pieces)
+    if not result.strip():
+        raise ProviderEmptyOutput("The model returned no text.")
+    return result
+
+
+async def chat_openai_compat(
+    base_url: str, key: str, model: str, system: str, user: str,
+    idle_timeout: float = DEFAULT_IDLE_TIMEOUT_SECS,
+    max_tokens: int | None = None,
+    cancel_event: asyncio.Event | None = None,
+    activity_cb=None,
+) -> str:
+    """Stream {base}/chat/completions and return the assembled assistant text.
 
     `max_tokens` bounds the OUTPUT length. Leave it None to use the server default.
     Note: this endpoint cannot set the input context window — for local Ollama that
@@ -265,6 +441,7 @@ def chat_openai_compat(
             {"role": "user", "content": user},
         ],
         "temperature": 0,
+        "stream": True,
     }
     if max_tokens and max_tokens > 0:
         payload["max_tokens"] = int(max_tokens)
@@ -273,19 +450,33 @@ def chat_openai_compat(
     if "deepseek.com" in base.lower():
         payload["thinking"] = {"type": "disabled"}
     try:
-        data = _post_json(f"{base}/chat/completions", headers, payload, timeout)
+        return await _stream_openai(
+            f"{base}/chat/completions", headers, payload, idle_timeout,
+            cancel_event, activity_cb,
+        )
+    except _StreamingUnsupported:
+        payload["stream"] = False
+        data = await _post_json_async(
+            f"{base}/chat/completions", headers, payload,
+            DEFAULT_FALLBACK_TIMEOUT_SECS, cancel_event,
+        )
+        return _assistant_text(data)
     except RuntimeError as exc:
         # Older DeepSeek-compatible proxies reject the thinking field.
         if payload.pop("thinking", None) is not None and "HTTP 400" in str(exc):
-            data = _post_json(f"{base}/chat/completions", headers, payload, timeout)
-        else:
-            raise
-    return _assistant_text(data)
+            return await _stream_openai(
+                f"{base}/chat/completions", headers, payload, idle_timeout,
+                cancel_event, activity_cb,
+            )
+        raise
 
 
-def chat_ollama(
-    base: str, model: str, system: str, user: str, timeout: float,
+async def chat_ollama(
+    base: str, model: str, system: str, user: str,
+    idle_timeout: float = DEFAULT_IDLE_TIMEOUT_SECS,
     num_ctx: int | None = None, num_predict: int | None = None,
+    cancel_event: asyncio.Event | None = None,
+    activity_cb=None,
 ) -> str:
     """POST {base}/api/chat (Ollama native). Unlike the OpenAI-compat endpoint, this
     accepts `num_ctx` — the input context window — so a long prompt is NOT silently
@@ -297,20 +488,61 @@ def chat_ollama(
         options["num_predict"] = int(num_predict)
     payload = {
         "model": model,
-        "stream": False,
+        "stream": True,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         "options": options,
     }
-    data = _post_json(f"{base}/api/chat", {"Content-Type": "application/json"}, payload, timeout)
-    return data.get("message", {}).get("content", "")
+    pieces: list[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=_timeout(idle_timeout)) as client:
+            async with client.stream(
+                "POST", f"{base}/api/chat",
+                headers={"Content-Type": "application/json"}, json=payload,
+            ) as response:
+                await _raise_http_error(response)
+                malformed_event = False
+                async for line in response.aiter_lines():
+                    _check_cancelled(cancel_event)
+                    if not line.strip():
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        malformed_event = True
+                        continue
+                    if not isinstance(event, dict):
+                        malformed_event = True
+                        continue
+                    piece = (event.get("message") or {}).get("content", "")
+                    if piece:
+                        pieces.append(piece)
+                        if activity_cb:
+                            activity_cb()
+                    if event.get("done"):
+                        break
+                if malformed_event:
+                    raise ProviderMalformedResponse(
+                        "The provider returned malformed streaming data."
+                    )
+    except httpx.ReadTimeout as exc:
+        raise ProviderIdleTimeout(
+            f"The provider sent no response data for {idle_timeout:g} seconds."
+        ) from exc
+    result = "".join(pieces)
+    if not result.strip():
+        raise ProviderEmptyOutput("The model returned no text.")
+    return result
 
 
-def chat_local(
-    base_url: str, model: str, system: str, user: str, timeout: float,
+async def chat_local(
+    base_url: str, model: str, system: str, user: str,
+    idle_timeout: float = DEFAULT_IDLE_TIMEOUT_SECS,
     num_ctx: int | None = None, num_predict: int | None = None,
+    cancel_event: asyncio.Event | None = None,
+    activity_cb=None,
 ) -> str:
     """Local chat. Prefers Ollama's native /api/chat so we can set `num_ctx` and avoid
     silent prompt truncation; falls back to the OpenAI-compatible endpoint (LM Studio,
@@ -321,16 +553,30 @@ def chat_local(
     # 404/connection error here, so we fall through to the OpenAI-compat path.
     native_exc: Exception | None = None
     try:
-        out = chat_ollama(base, model, system, user, timeout, num_ctx, num_predict)
+        out = await chat_ollama(
+            base, model, system, user, idle_timeout, num_ctx, num_predict,
+            cancel_event, activity_cb,
+        )
         if out:
             return out
+    except asyncio.CancelledError:
+        raise
+    except ProviderIdleTimeout:
+        # The native endpoint accepted the request but then stalled. Retrying the
+        # same generation through compatibility routes would duplicate the work.
+        raise
     except Exception as exc:  # noqa: BLE001 — not Ollama, or transient; try the compat path
         native_exc = exc
     last: Exception | None = None
     out_cap = num_predict if (num_predict and num_predict > 0) else None
     for candidate in (f"{base}/v1", base):
         try:
-            return chat_openai_compat(candidate, "", model, system, user, timeout, out_cap)
+            return await chat_openai_compat(
+                candidate, "", model, system, user, idle_timeout, out_cap,
+                cancel_event, activity_cb,
+            )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             last = exc
     # If both paths failed, prefer the native error (usually more informative:
@@ -338,9 +584,12 @@ def chat_local(
     raise native_exc or last or RuntimeError("Local chat failed")
 
 
-def chat_anthropic(
-    key: str, model: str, system: str, user: str, timeout: float,
+async def chat_anthropic(
+    key: str, model: str, system: str, user: str,
+    idle_timeout: float = DEFAULT_IDLE_TIMEOUT_SECS,
     max_tokens: int = 8192,
+    cancel_event: asyncio.Event | None = None,
+    activity_cb=None,
 ) -> str:
     headers = {
         "x-api-key": key,
@@ -352,10 +601,74 @@ def chat_anthropic(
         "max_tokens": int(max_tokens),
         "system": system,
         "messages": [{"role": "user", "content": user}],
+        "stream": True,
     }
-    data = _post_json("https://api.anthropic.com/v1/messages", headers, payload, timeout)
-    parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
-    return "".join(parts)
+    pieces: list[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=_timeout(idle_timeout)) as client:
+            async with client.stream(
+                "POST", "https://api.anthropic.com/v1/messages",
+                headers=headers, json=payload,
+            ) as response:
+                await _raise_http_error(response)
+                content_type = response.headers.get("content-type", "").lower()
+                if "application/json" in content_type:
+                    try:
+                        data = json.loads(await response.aread())
+                    except json.JSONDecodeError as exc:
+                        raise ProviderMalformedResponse(
+                            "The provider returned malformed JSON."
+                        ) from exc
+                    if not isinstance(data, dict):
+                        raise ProviderMalformedResponse(
+                            "The provider returned a malformed JSON response."
+                        )
+                    pieces = [_anthropic_text(data)]
+                else:
+                    malformed_event = False
+                    async for line in response.aiter_lines():
+                        _check_cancelled(cancel_event)
+                        if not line.startswith("data:"):
+                            continue
+                        try:
+                            event = json.loads(line[5:].strip())
+                        except json.JSONDecodeError:
+                            malformed_event = True
+                            continue
+                        if not isinstance(event, dict):
+                            malformed_event = True
+                            continue
+                        delta = event.get("delta") or {}
+                        if (
+                            event.get("type") == "content_block_delta"
+                            and delta.get("type") == "text_delta"
+                        ):
+                            piece = delta.get("text", "")
+                            if piece:
+                                pieces.append(piece)
+                                if activity_cb:
+                                    activity_cb()
+                        if event.get("type") == "message_stop":
+                            break
+                    if malformed_event:
+                        raise ProviderMalformedResponse(
+                            "The provider returned malformed streaming data."
+                        )
+    except _StreamingUnsupported:
+        payload["stream"] = False
+        data = await _post_json_async(
+            "https://api.anthropic.com/v1/messages", headers, payload,
+            DEFAULT_FALLBACK_TIMEOUT_SECS, cancel_event,
+        )
+        pieces = [_anthropic_text(data)]
+    except httpx.ReadTimeout as exc:
+        raise ProviderIdleTimeout(
+            f"The provider sent no response data for {idle_timeout:g} seconds."
+        ) from exc
+    result = "".join(pieces)
+    if not result.strip():
+        raise ProviderEmptyOutput("The model returned no text.")
+    return result
 
 
 def _pick_cleanup_model(models: list[str]) -> str:

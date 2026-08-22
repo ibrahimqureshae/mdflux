@@ -1,4 +1,4 @@
-// Stage 7 — output filename builder. Mirrors the Rust `build_output_name`
+// Output filename builder. Mirrors the Rust `build_output_name`
 // (lib.rs) so the live preview in the UI matches what a batch actually writes.
 // Tokens: {stem} {ext} {date}. The ".md" extension is always appended.
 

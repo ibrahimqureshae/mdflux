@@ -10,6 +10,20 @@
     providerById,
     providerLabel,
   } from './providers';
+  import {
+    RUNTIME_COMPONENTS,
+    allowsComponentInstall,
+    componentDotClass,
+    componentLabel,
+    componentStateLabel,
+    editionLabel,
+    isImmutableFull,
+    lifecycleDotClass,
+    lifecycleLabel,
+    platformLabel,
+    showsRepairAction,
+    type RuntimeStatus,
+  } from './runtime-status';
 
   // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -68,12 +82,12 @@
     api_key: string;
     cleanup_model: string;
     cleanup_seen: boolean;
-    // Stage 6
+    // Optional conversion engines
     conversion_model: string;
     llm_conversion: boolean;
     extract_images: boolean;
     audio_model: string;
-    // Stage 7 — output management
+    // Output management
     output_rule: string;       // 'next_to_source' | 'fixed_folder' | 'mirror_tree'
     output_folder: string;     // default folder for fixed_folder / mirror_tree
     naming_template: string;   // tokens: {stem} {ext} {date}
@@ -88,12 +102,24 @@
     highlight = null,
     config,
     onConfigChange,
+    runtimeStatus = null,
+    onRepairRuntime,
   }: {
     onBack: () => void;
     highlight?: string | null;
     config: AppConfig;
     onConfigChange: (c: AppConfig) => Promise<void>;
+    runtimeStatus?: RuntimeStatus | null;
+    onRepairRuntime?: () => void;
   } = $props();
+
+  const canInstallOptional = $derived(
+    runtimeStatus ? allowsComponentInstall(runtimeStatus) : true,
+  );
+  const fullEdition = $derived(runtimeStatus ? isImmutableFull(runtimeStatus) : false);
+  const needsRuntimeRepair = $derived(
+    runtimeStatus ? showsRepairAction(runtimeStatus) : false,
+  );
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -117,14 +143,14 @@
   let cleanupModel    = $state(untrack(() => config.cleanup_model));
   let conversionModel = $state(untrack(() => config.conversion_model ?? ''));
 
-  // Stage 7 — output management. Template is edited locally for a live preview,
+  // Output management. Template is edited locally for a live preview,
   // committed on change; rule/case/folder/toggle read config directly (reactive).
   let namingTemplate  = $state(untrack(() => config.naming_template ?? '{stem}'));
   const namePreview = $derived(
     buildOutputFilename('Annual Report.pdf', namingTemplate, (config.naming_case ?? 'keep') as NamingCase),
   );
 
-  // Stage 6: optional engine install state
+  // Optional engine install state
   let ocrState   = $state<EngineState>({ status: 'not_installed' });
   let audioState = $state<EngineState>({ status: 'not_installed' });
   let installing = $state<string | null>(null);
@@ -253,7 +279,7 @@
     await onConfigChange({ ...config, llm_conversion: enabled });
   }
 
-  // ── Stage 7: output management ───────────────────────────────────────────────
+  // Output management
 
   async function saveOutputRule(rule: string) {
     await onConfigChange({ ...config, output_rule: rule });
@@ -392,6 +418,56 @@
   <!-- Scrollable body -->
   <div class="diag-body">
 
+    {#if runtimeStatus}
+      <section class="section">
+        <h2 class="section-title">Edition &amp; runtime</h2>
+        <div class="runtime-grid edition-grid">
+          <div class="runtime-item">
+            <span class="runtime-label">Edition</span>
+            <span class="runtime-value">{editionLabel(runtimeStatus.edition)}</span>
+          </div>
+          <div class="runtime-item">
+            <span class="runtime-label">Platform</span>
+            <span class="runtime-value">{platformLabel(runtimeStatus.platform)}</span>
+          </div>
+          <div class="runtime-item">
+            <span class="runtime-label">Runtime status</span>
+            <span class="runtime-value status-row">
+              <span class="dot dot-{lifecycleDotClass(runtimeStatus.status)}" aria-hidden="true"></span>
+              {lifecycleLabel(runtimeStatus.status)}
+            </span>
+          </div>
+          <div class="runtime-item">
+            <span class="runtime-label">Python</span>
+            <span class="runtime-value">{runtimeStatus.python_version ?? '—'}</span>
+          </div>
+        </div>
+        <div class="component-grid">
+          {#each RUNTIME_COMPONENTS as key}
+            <div class="component-row">
+              <span class="dot dot-{componentDotClass(runtimeStatus.components[key])}" aria-hidden="true"></span>
+              <span class="component-name">{componentLabel(key)}</span>
+              <span class="component-state">{componentStateLabel(runtimeStatus.components[key])}</span>
+            </div>
+          {/each}
+        </div>
+        {#if fullEdition}
+          <p class="edition-note">Full edition bundles core, OCR, and audio. Package install actions are disabled.</p>
+        {:else if runtimeStatus.status === 'installing'}
+          <p class="edition-note">Lite edition is building a new runtime beside the active one. The previous runtime stays available until activation succeeds.</p>
+        {:else if needsRuntimeRepair}
+          <p class="edition-note edition-warn">
+            {runtimeStatus.status === 'invalid'
+              ? 'The active runtime is invalid.'
+              : 'The last staged install did not activate.'}
+            {#if onRepairRuntime}
+              <button class="repair-inline-btn" onclick={onRepairRuntime}>Repair runtime</button>
+            {/if}
+          </p>
+        {/if}
+      </section>
+    {/if}
+
     {#if capsLoading}
       <div class="loading-state">
         <div class="spinner-sm" aria-label="Loading"></div>
@@ -466,21 +542,27 @@
               <span class="cap-badge badge-amber">Installing…</span>
             {:else if ocrState.status === 'failed'}
               <span class="cap-badge badge-red">Failed</span>
-            {:else}
+            {:else if canInstallOptional}
               <span class="cap-badge badge-amber">Not installed</span>
               <button class="install-btn" onclick={() => installEngine('ocr')} disabled={installing !== null}>
                 Install <span class="install-size">· {caps.optional.ocr.size_hint}</span>
               </button>
+            {:else}
+              <span class="cap-badge badge-amber">Not bundled</span>
             {/if}
             {#if installing === 'ocr' && ocrState.status === 'installing'}
               <div class="install-progress-wrap">
                 <div class="install-track"><div class="install-indet"></div></div>
                 <span class="install-progress-msg">{installMsg}</span>
               </div>
-            {:else if ocrState.status === 'failed' && ocrState.error}
+            {:else if ocrState.status === 'failed' && canInstallOptional}
               <div class="install-error">
-                <span>{ocrState.error.split('\n')[0]}</span>
+                <span>{ocrState.error?.split('\n')[0] ?? 'Installation failed.'}</span>
                 <button class="install-btn" onclick={() => installEngine('ocr')} disabled={installing !== null}>Retry</button>
+              </div>
+            {:else if ocrState.status === 'failed'}
+              <div class="install-error">
+                <span>{ocrState.error?.split('\n')[0] ?? 'Component failed.'} Use Repair runtime if the active environment is repairable.</span>
               </div>
             {:else}
               <span class="cap-detail">{caps.optional.ocr.note}</span>
@@ -498,33 +580,45 @@
               <span class="cap-badge badge-amber">Installing…</span>
             {:else if audioState.status === 'failed'}
               <span class="cap-badge badge-red">Failed</span>
-            {:else}
+            {:else if canInstallOptional}
               <span class="cap-badge badge-amber">Not installed</span>
               <button class="install-btn" onclick={() => installEngine('audio')} disabled={installing !== null}>
                 Install <span class="install-size">· {caps.optional.audio.size_hint}</span>
               </button>
+            {:else}
+              <span class="cap-badge badge-amber">Not bundled</span>
             {/if}
             {#if installing === 'audio' && audioState.status === 'installing'}
               <div class="install-progress-wrap">
                 <div class="install-track"><div class="install-indet"></div></div>
                 <span class="install-progress-msg">{installMsg}</span>
               </div>
-            {:else if audioState.status === 'failed' && audioState.error}
+            {:else if audioState.status === 'failed' && canInstallOptional}
               <div class="install-error">
-                <span>{audioState.error.split('\n')[0]}</span>
+                <span>{audioState.error?.split('\n')[0] ?? 'Installation failed.'}</span>
                 <button class="install-btn" onclick={() => installEngine('audio')} disabled={installing !== null}>Retry</button>
+              </div>
+            {:else if audioState.status === 'failed'}
+              <div class="install-error">
+                <span>{audioState.error?.split('\n')[0] ?? 'Component failed.'} Use Repair runtime if the active environment is repairable.</span>
               </div>
             {:else}
               <span class="cap-detail">{caps.optional.audio.note}</span>
             {/if}
           </div>
         </div>
-        <p class="optional-note">Installed via uv pip into the app's isolated Python environment. Internet required. No system packages needed.</p>
+        <p class="optional-note">
+          {#if fullEdition}
+            Optional engines are pre-installed in the Full runtime and cannot be modified here.
+          {:else}
+            Installed via uv pip into the app's isolated Python environment. Internet required. No system packages needed.
+          {/if}
+        </p>
       </section>
 
     {/if}
 
-    <!-- Output management (Stage 7) — always shown -->
+    <!-- Output management is always shown. -->
     <section class="section">
       <h2 class="section-title">Output</h2>
 
@@ -940,6 +1034,56 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .status-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .edition-grid { margin-bottom: var(--sp-2); }
+  .component-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .component-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 7px var(--sp-3);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .component-row:last-child { border-bottom: none; }
+  .component-name { flex: 1; color: var(--text-primary); }
+  .component-state {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+  .edition-note {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .edition-warn { color: var(--amber); }
+  .repair-inline-btn {
+    margin-left: var(--sp-2);
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-ui);
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent-edge);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .repair-inline-btn:hover { background: var(--accent-hover); }
 
   /* Capability list */
   .cap-list {
@@ -1118,7 +1262,7 @@
   }
   .rec-hint b { color: var(--text-secondary); }
 
-  /* Stage 7 — output management */
+  /* Output management */
   .folder-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm); }
   .folder-icon { flex-shrink: 0; color: var(--accent); }
   .folder-value { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
