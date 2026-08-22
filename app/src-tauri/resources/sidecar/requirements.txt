@@ -1,2 +1,3 @@
 markitdown[pdf,docx,pptx,xlsx,xls]>=0.1.7
+httpx>=0.28,<1
 openai>=2.43,<3

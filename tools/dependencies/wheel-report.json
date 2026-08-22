@@ -1,0 +1,231 @@
+{
+  "lock_sha256": "43d6cb94dd53a23ed706d9c8bf86951f77b949f64cc901eec7bce820612d3157",
+  "native_packages": [
+    {
+      "manylinux_x64": [
+        "av-18.1.0-cp311-abi3-manylinux_2_28_x86_64.whl"
+      ],
+      "name": "av",
+      "version": "18.1.0",
+      "windows_x64": [
+        "av-18.1.0-cp311-abi3-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+      ],
+      "name": "cffi",
+      "version": "2.1.1",
+      "windows_x64": [
+        "cffi-2.1.1-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "charset_normalizer-3.5.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+        "charset_normalizer-3.5.1-cp37-abi3-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl"
+      ],
+      "name": "charset-normalizer",
+      "version": "3.5.1",
+      "windows_x64": [
+        "charset_normalizer-3.5.1-cp312-cp312-win_amd64.whl",
+        "charset_normalizer-3.5.1-cp37-abi3-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "cryptography-50.0.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "cryptography-50.0.0-cp311-abi3-manylinux_2_28_x86_64.whl",
+        "cryptography-50.0.0-cp311-abi3-manylinux_2_34_x86_64.whl",
+        "cryptography-50.0.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "cryptography-50.0.0-cp39-abi3-manylinux_2_28_x86_64.whl",
+        "cryptography-50.0.0-cp39-abi3-manylinux_2_34_x86_64.whl"
+      ],
+      "name": "cryptography",
+      "version": "50.0.0",
+      "windows_x64": [
+        "cryptography-50.0.0-cp311-abi3-win_amd64.whl",
+        "cryptography-50.0.0-cp39-abi3-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "ctranslate2-4.8.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+      ],
+      "name": "ctranslate2",
+      "version": "4.8.1",
+      "windows_x64": [
+        "ctranslate2-4.8.1-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "hf_xet-1.6.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+      ],
+      "name": "hf-xet",
+      "version": "1.6.0",
+      "windows_x64": [
+        "hf_xet-1.6.0-cp38-abi3-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "jiter-0.16.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+      ],
+      "name": "jiter",
+      "version": "0.16.0",
+      "windows_x64": [
+        "jiter-0.16.0-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "lxml-6.1.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "lxml-6.1.2-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl"
+      ],
+      "name": "lxml",
+      "version": "6.1.2",
+      "windows_x64": [
+        "lxml-6.1.2-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "magika-0.6.2-py3-none-manylinux_2_28_x86_64.whl"
+      ],
+      "name": "magika",
+      "version": "0.6.2",
+      "windows_x64": [
+        "magika-0.6.2-py3-none-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "numpy-2.5.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+      ],
+      "name": "numpy",
+      "version": "2.5.2",
+      "windows_x64": [
+        "numpy-2.5.2-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "onnxruntime-1.29.0-cp312-cp312-manylinux_2_28_x86_64.whl"
+      ],
+      "name": "onnxruntime",
+      "version": "1.29.0",
+      "windows_x64": [
+        "onnxruntime-1.29.0-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "opencv_python-5.0.0.93-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl"
+      ],
+      "name": "opencv-python",
+      "version": "5.0.0.93",
+      "windows_x64": [
+        "opencv_python-5.0.0.93-cp37-abi3-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "pandas-3.0.5-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl"
+      ],
+      "name": "pandas",
+      "version": "3.0.5",
+      "windows_x64": [
+        "pandas-3.0.5-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+      ],
+      "name": "pillow",
+      "version": "12.3.0",
+      "windows_x64": [
+        "pillow-12.3.0-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "protobuf-7.36.0-cp310-abi3-manylinux2014_x86_64.whl"
+      ],
+      "name": "protobuf",
+      "version": "7.36.0",
+      "windows_x64": [
+        "protobuf-7.36.0-cp310-abi3-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "pyclipper-1.4.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+      ],
+      "name": "pyclipper",
+      "version": "1.4.0",
+      "windows_x64": [
+        "pyclipper-1.4.0-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "pydantic_core-2.46.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+      ],
+      "name": "pydantic-core",
+      "version": "2.46.4",
+      "windows_x64": [
+        "pydantic_core-2.46.4-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "pypdfium2-5.13.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+      ],
+      "name": "pypdfium2",
+      "version": "5.13.0",
+      "windows_x64": [
+        "pypdfium2-5.13.0-py3-none-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+      ],
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "windows_x64": [
+        "pyyaml-6.0.3-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "shapely-2.1.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+      ],
+      "name": "shapely",
+      "version": "2.1.2",
+      "windows_x64": [
+        "shapely-2.1.2-cp312-cp312-win_amd64.whl"
+      ]
+    },
+    {
+      "manylinux_x64": [
+        "tokenizers-0.23.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+      ],
+      "name": "tokenizers",
+      "version": "0.23.1",
+      "windows_x64": [
+        "tokenizers-0.23.1-cp310-abi3-win_amd64.whl"
+      ]
+    }
+  ],
+  "schema": 1,
+  "targets": [
+    "windows-x64",
+    "linux-x64-glibc"
+  ],
+  "unsupported": []
+}

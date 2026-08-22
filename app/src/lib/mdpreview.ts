@@ -1,4 +1,4 @@
-// Stage 5 — Markdown → safe HTML for the Preview tab.
+// Markdown to safe HTML for the Preview tab.
 // marked parses GFM (incl. tables); DOMPurify strips any scripts/handlers that a
 // converted document might carry. DOMPurify needs `window`, so callers must only
 // invoke this in the browser (it's only ever used at runtime in the webview).

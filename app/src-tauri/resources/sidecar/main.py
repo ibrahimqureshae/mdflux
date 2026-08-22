@@ -12,12 +12,11 @@ IPC v1 protocol:
   Failure:  {"v":1, "id":"<str>", "ok":false, "error":{"code","title","detail","suggested_action"}}
   Progress: {"v":1, "id":"<conv-id>", "type":"progress", "stage":"<str>", "frac":<float|null>, "heartbeat":<int>}
 
-Stage 4 change: concurrent convert-one is now supported. Each request gets its
+Concurrent convert-one requests are supported. Each request gets its
 own asyncio.Event for cancellation, keyed by request id. "cancel" with no id
 cancels all; with an "id" param it cancels one specific conversion.
 """
 import asyncio
-import functools
 import importlib
 import json
 import os
@@ -41,10 +40,6 @@ from errors import (
 )
 
 TIMEOUT_SECS: int = 120
-# AI cleanup per-chunk timeout. Lowered from 600 to 120 so Cancel doesn't wait up
-# to 10 minutes for an in-flight LLM chunk to finish. The overall deadline still
-# extends on each chunk completion, so a multi-chunk document is fine.
-CLEANUP_LLM_TIMEOUT_SECS: int = 120
 OCR_TIMEOUT_SECS: int = 600
 AUDIO_TIMEOUT_SECS: int = 600
 # Online-only cloud files (OneDrive Files On-Demand) must be downloaded on first read;
@@ -61,6 +56,7 @@ _SIDECAR_DIR: Path = Path(__file__).parent
 class Sidecar:
     def __init__(self) -> None:
         self._write_lock: asyncio.Lock = asyncio.Lock()
+        self._background_tasks: set[asyncio.Task] = set()
         # Per-conversion cancel events keyed by request id.
         # Populated on convert-one, removed in _convert_safe's finally block.
         self._cancel_events: dict[str, asyncio.Event] = {}
@@ -71,6 +67,12 @@ class Sidecar:
         self._worker_sem = asyncio.Semaphore(max(2, min(8, cpu // 2)))
         # Track active worker subprocesses so we can kill them on shutdown (M11).
         self._active_procs: set[asyncio.subprocess.Process] = set()
+
+    def _spawn(self, coroutine) -> None:
+        """Retain asynchronous requests until completion."""
+        task = asyncio.create_task(coroutine)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     # ── Output ──────────────────────────────────────────────────────────────
 
@@ -99,20 +101,20 @@ class Sidecar:
             await self.write({"v": 1, "id": req_id, "ok": True, "result": result})
 
         elif method == "check-provider":
-            asyncio.create_task(self._check_provider_safe(req_id, params))
+            self._spawn(self._check_provider_safe(req_id, params))
 
         elif method == "convert-one":
             # Concurrent conversions are supported — no BUSY check.
             cancel_event = asyncio.Event()
             self._cancel_events[req_id] = cancel_event
-            asyncio.create_task(self._convert_safe(req_id, params, cancel_event))
+            self._spawn(self._convert_safe(req_id, params, cancel_event))
 
         elif method == "cleanup":
             # Deterministic + optional LLM cleanup. Cancellable via the same
             # per-id event dict so batch cancel (cancel-all) stops the LLM pass.
             cancel_event = asyncio.Event()
             self._cancel_events[req_id] = cancel_event
-            asyncio.create_task(self._cleanup_safe(req_id, params, cancel_event))
+            self._spawn(self._cleanup_safe(req_id, params, cancel_event))
 
         elif method == "cancel":
             target_id = params.get("id")
@@ -263,8 +265,10 @@ class Sidecar:
 
         if required_module:
             try:
-                importlib.import_module(required_module)
-            except ImportError:
+                module_available = importlib.util.find_spec(required_module) is not None
+            except (ImportError, AttributeError, ValueError):
+                module_available = False
+            if not module_available:
                 e = err(
                     MISSING_EXTRA, "Required package missing",
                     f"The '{required_module}' package is not installed.",
@@ -500,7 +504,7 @@ class Sidecar:
             finally:
                 self._active_procs.discard(proc)
 
-    # ── Cleanup (Stage 5) ────────────────────────────────────────────────────
+    # ── Cleanup ──────────────────────────────────────────────────────────────
 
     async def _cleanup_safe(
         self, req_id: str, params: dict, cancel_event: asyncio.Event
@@ -550,41 +554,33 @@ class Sidecar:
             return
 
         loop = asyncio.get_running_loop()
-        # The cleanup runs CHUNKED (see cleanup.llm_clean). progress is a shared dict the
-        # worker thread updates as each chunk finishes; should_cancel lets it stop early.
+        # Provider calls stream on this event loop. There is deliberately no overall
+        # generation deadline: the provider layer stops only when the response goes
+        # silent, while cancellation aborts the active HTTP stream immediately.
         progress = {"done": 0, "total": 0}
-        work = asyncio.ensure_future(loop.run_in_executor(
-            None,
-            functools.partial(
-                _cleanup_mod.llm_clean, markdown, provider_cfg, CLEANUP_LLM_TIMEOUT_SECS,
-                progress_cb=lambda d, t: progress.update(done=d, total=t),
-                should_cancel=cancel_event.is_set,
-            ),
+        work = asyncio.create_task(_cleanup_mod.llm_clean(
+            markdown,
+            provider_cfg,
+            progress_cb=lambda d, t: progress.update(done=d, total=t),
+            cancel_event=cancel_event,
         ))
-        # Liveness: allow up to CLEANUP_LLM_TIMEOUT_SECS PER CHUNK. The deadline is pushed
-        # forward whenever a chunk completes, so a long multi-chunk document is fine, but a
-        # genuinely stuck chunk still trips it.
-        deadline = loop.time() + CLEANUP_LLM_TIMEOUT_SECS + 30
-        last_done = 0
 
         try:
-            # Poll the worker: check for cancel every 2 s (snappy Cancel button),
-            # emit a heartbeat every ~5 s so Rust's idle timeout never trips.
+            # Heartbeats keep the sidecar IPC alive independently of the provider's
+            # token cadence. They do not extend the provider's own inactivity timer.
             last_hb = loop.time()
             while True:
                 if cancel_event.is_set():
                     work.cancel()
+                    try:
+                        await work
+                    except asyncio.CancelledError:
+                        pass
                     await self.write({"v": 1, "id": req_id, **_cancelled_err()})
                     return
-                done, _ = await asyncio.wait({work}, timeout=2.0)
+                done, _ = await asyncio.wait({work}, timeout=1.0)
                 if work in done:
                     break
-                if progress["done"] != last_done:   # a chunk landed → extend the deadline
-                    last_done = progress["done"]
-                    deadline = loop.time() + CLEANUP_LLM_TIMEOUT_SECS + 30
-                if loop.time() >= deadline:
-                    work.cancel()
-                    raise asyncio.TimeoutError()
                 if loop.time() - last_hb >= 5.0:
                     frac = (progress["done"] / progress["total"]) if progress["total"] else None
                     await self._emit_progress(req_id, "ai-cleanup", frac)
@@ -608,12 +604,21 @@ class Sidecar:
         except _cleanup_mod.CleanupCancelled:
             await self.write({"v": 1, "id": req_id, **_cancelled_err()})
             return
-        except asyncio.TimeoutError:
-            llm_notice = "AI cleanup timed out — kept the original text."
+        except _provider.ProviderIdleTimeout as exc:
+            llm_notice = f"AI cleanup stopped because {exc} Kept the original text."
+        except _provider.ProviderEmptyOutput:
+            llm_notice = "AI cleanup returned no text — kept the original text."
+        except _provider.ProviderMalformedResponse:
+            llm_notice = (
+                "AI cleanup received an invalid provider response — "
+                "kept the original text."
+            )
         except Exception as exc:  # noqa: BLE001 — fail soft, never lose the result
             _key = provider_cfg.get("key", "")
             safe_exc = str(exc).replace(_key, "[key]") if _key else str(exc)
-            llm_notice = f"AI cleanup unavailable: {safe_exc} — kept the original text."
+            llm_notice = (
+                f"AI cleanup provider failed: {safe_exc} — kept the original text."
+            )
 
         summary = {
             "rules": [],
@@ -780,6 +785,10 @@ async def async_main() -> None:
         for proc in list(sidecar._active_procs):
             await _kill(proc)
         sidecar._active_procs.clear()
+        for task in list(sidecar._background_tasks):
+            task.cancel()
+        if sidecar._background_tasks:
+            await asyncio.gather(*sidecar._background_tasks, return_exceptions=True)
 
 
 def main() -> None:

@@ -1,4 +1,4 @@
-// Stage 5 — line diff for the Changes tab.
+// Line diff for the Changes tab.
 // Dependency-free LCS. Guards against pathological sizes so a 500-page PDF stays
 // responsive: above the cap it returns a cheap multiset summary instead of a full diff.
 // Numbered rows + hunks are shaped like GitHub's unified file diff.

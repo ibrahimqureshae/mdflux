@@ -14,6 +14,14 @@
   import DocViewer from '$lib/DocViewer.svelte';
   import StagingView, { freshStaging } from '$lib/StagingView.svelte';
   import ProvisionView, { type ProvisionProgress } from '$lib/ProvisionView.svelte';
+  import {
+    editionLabel,
+    fetchRuntimeStatus,
+    lifecycleDotClass,
+    lifecycleLabel,
+    showsRepairAction,
+    type RuntimeStatus,
+  } from '$lib/runtime-status';
   import type { ConvertCleanup, StagingState, FileInfo } from '$lib/StagingView.svelte';
   import type { BatchItemState } from '$lib/BatchQueueView.svelte';
   import { freshCleanup } from '$lib/cleanup';
@@ -49,6 +57,7 @@
   let view        = $state<View>('main');
   let progress    = $state<ProvisionProgress>({ step: '', message: 'Starting…', pct: 0, detail: null });
   let health      = $state<HealthReport | null>(null);
+  let runtimeStatus = $state<RuntimeStatus | null>(null);
   let errorMsg    = $state('');
   let errorBtn    = $state('Retry');
   let result      = $state<ConvertResult | null>(null);
@@ -167,7 +176,7 @@
       batchCleanupChanges = payload.cleanup_changes;
       const allCancelled = payload.done + payload.failed === 0 && payload.cancelled > 0;
       batchPhase = allCancelled ? 'cancelled' : 'done';
-      // Stage 7: optionally reveal the output folder once files have landed.
+      // Optionally reveal the output folder once files have landed.
       if (config?.open_after_convert && payload.done > 0) openOutputFolder();
     }).then(fn => { if (dead) fn(); else unlisteners.push(fn); });
 
@@ -181,8 +190,9 @@
   async function boot(force: boolean) {
     try {
       phase = 'checking';
+      runtimeStatus = await fetchRuntimeStatus();
       const status = await invoke<ProvisionStatus>('get_provision_status');
-      if (status.state === 'ready' && !force) {
+      if (status.state === 'ready' && !force && runtimeStatus.status === 'ready') {
         await doHealthCheck();
       } else {
         await doProvision(force);
@@ -195,10 +205,15 @@
   async function doProvision(force: boolean) {
     phase = 'provisioning';
     progress = { step: '', message: 'Preparing…', pct: 0, detail: null };
+    if (runtimeStatus) {
+      runtimeStatus = { ...runtimeStatus, status: 'installing' };
+    }
     try {
       await invoke('start_provision', { force });
+      runtimeStatus = await fetchRuntimeStatus();
       await doHealthCheck();
     } catch (e) {
+      runtimeStatus = await fetchRuntimeStatus().catch(() => runtimeStatus);
       showError(String(e), 'Retry');
     }
   }
@@ -208,6 +223,7 @@
     try {
       health = await invoke<HealthReport>('run_health_check');
       config = await invoke<AppConfig>('get_config');
+      runtimeStatus = await fetchRuntimeStatus();
       // Seed staging defaults from saved output settings — but only if the user
       // hasn't already staged files and chosen per-run overrides. A Repair from
       // the health footer must not silently revert "Mirror folders" + "Rule-based".
@@ -228,8 +244,15 @@
   }
 
   function allGreen(): boolean {
+    if (runtimeStatus?.edition === 'full') {
+      return runtimeStatus.status === 'ready';
+    }
     if (!health || !health.markitdown_version) return false;
     return Object.values(health.extras).every(Boolean);
+  }
+
+  async function repairRuntime() {
+    await boot(true);
   }
 
   // ── Config management ──────────────────────────────────────────────────────
@@ -528,7 +551,12 @@
   <!-- Header -->
   <header>
     <span class="wordmark">MDFlux</span>
-    {#if phase === 'ready'}
+    {#if phase === 'ready' && runtimeStatus}
+      <span class="badge edition-chip">{editionLabel(runtimeStatus.edition)}</span>
+      <span class="badge" class:green={allGreen()} class:amber={!allGreen()}>
+        {allGreen() ? 'Ready' : lifecycleLabel(runtimeStatus.status)}
+      </span>
+    {:else if phase === 'ready'}
       <span class="badge" class:green={allGreen()} class:amber={!allGreen()}>
         {allGreen() ? 'Ready' : 'Partial'}
       </span>
@@ -573,7 +601,7 @@
       </div>
 
     {:else if phase === 'provisioning'}
-      <ProvisionView {progress} />
+      <ProvisionView {progress} {runtimeStatus} />
 
     {:else if phase === 'ready' && view === 'diagnostics' && config}
       <DiagnosticsView
@@ -581,6 +609,8 @@
         highlight={diagHighlight}
         {config}
         onConfigChange={updateConfig}
+        {runtimeStatus}
+        onRepairRuntime={runtimeStatus && showsRepairAction(runtimeStatus) ? repairRuntime : undefined}
       />
 
     {:else if phase === 'ready' && viewing}
@@ -675,24 +705,42 @@
   {#if phase === 'ready' && health && view === 'main' && batchItems === null && staged.length === 0 && !result && !converting}
     <details class="health-footer">
       <summary>
-        <span>Dependency health</span>
-        <span class="health-dots" aria-hidden="true">
-          <span class="hdot hdot-green" title="Python {health.python_version}"></span>
-          <span class="hdot" class:hdot-green={!!health.markitdown_version} class:hdot-red={!health.markitdown_version} title="MarkItDown {health.markitdown_version ?? 'missing'}"></span>
-          {#each Object.entries(EXTRA_LABELS) as [key, label]}
-            <span class="hdot" class:hdot-green={health.extras[key]} class:hdot-red={!health.extras[key]} title="{label}: {health.extras[key] ? 'ok' : 'missing'}"></span>
-          {/each}
-        </span>
+        <span>{runtimeStatus ? `${editionLabel(runtimeStatus.edition)} runtime` : 'Dependency health'}</span>
+        {#if runtimeStatus}
+          <span class="health-dots" aria-hidden="true">
+            <span class="hdot hdot-{lifecycleDotClass(runtimeStatus.status)}" title="{lifecycleLabel(runtimeStatus.status)}"></span>
+          </span>
+        {:else}
+          <span class="health-dots" aria-hidden="true">
+            <span class="hdot hdot-green" title="Python {health.python_version}"></span>
+            <span class="hdot" class:hdot-green={!!health.markitdown_version} class:hdot-red={!health.markitdown_version} title="MarkItDown {health.markitdown_version ?? 'missing'}"></span>
+            {#each Object.entries(EXTRA_LABELS) as [key, label]}
+              <span class="hdot" class:hdot-green={health.extras[key]} class:hdot-red={!health.extras[key]} title="{label}: {health.extras[key] ? 'ok' : 'missing'}"></span>
+            {/each}
+          </span>
+        {/if}
         {#if !allGreen()}<span class="warn-badge">Issues found</span>{/if}
       </summary>
       <div class="health-grid">
-        {@render HealthRow({ label: 'Python', value: health.python_version, ok: true })}
-        {@render HealthRow({ label: 'MarkItDown', value: health.markitdown_version ?? 'not installed', ok: !!health.markitdown_version })}
-        {#each Object.entries(EXTRA_LABELS) as [key, label]}
-          {@render HealthRow({ label, value: health.extras[key] ? 'installed' : 'missing', ok: health.extras[key] ?? false })}
-        {/each}
+        {#if runtimeStatus}
+          {@render HealthRow({ label: 'Edition', value: editionLabel(runtimeStatus.edition), ok: true })}
+          {@render HealthRow({ label: 'Platform', value: runtimeStatus.platform, ok: true })}
+          {@render HealthRow({ label: 'Runtime', value: lifecycleLabel(runtimeStatus.status), ok: runtimeStatus.status === 'ready' })}
+          {@render HealthRow({ label: 'Python', value: runtimeStatus.python_version ?? health.python_version, ok: runtimeStatus.status === 'ready' })}
+          {@render HealthRow({ label: 'Core', value: runtimeStatus.components.core, ok: runtimeStatus.components.core === 'installed' })}
+          {@render HealthRow({ label: 'OCR', value: runtimeStatus.components.ocr, ok: runtimeStatus.components.ocr === 'installed' })}
+          {@render HealthRow({ label: 'Audio', value: runtimeStatus.components.audio, ok: runtimeStatus.components.audio === 'installed' })}
+        {:else}
+          {@render HealthRow({ label: 'Python', value: health.python_version, ok: true })}
+          {@render HealthRow({ label: 'MarkItDown', value: health.markitdown_version ?? 'not installed', ok: !!health.markitdown_version })}
+          {#each Object.entries(EXTRA_LABELS) as [key, label]}
+            {@render HealthRow({ label, value: health.extras[key] ? 'installed' : 'missing', ok: health.extras[key] ?? false })}
+          {/each}
+        {/if}
         {#if !allGreen()}
-          <button class="repair-btn" onclick={() => boot(true)}>Repair</button>
+          <button class="repair-btn" onclick={() => boot(true)}>
+            {runtimeStatus && showsRepairAction(runtimeStatus) ? 'Repair runtime' : 'Repair'}
+          </button>
         {/if}
       </div>
     </details>
@@ -744,6 +792,10 @@
   }
   .badge.green { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
   .badge.amber { background: color-mix(in srgb, var(--amber) 15%, transparent); color: var(--amber); }
+  .badge.edition-chip {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--text-secondary);
+  }
   .header-right {
     margin-left: auto;
     display: flex;
@@ -904,6 +956,7 @@
   }
   .hdot-green { background: var(--green); }
   .hdot-red   { background: var(--red); }
+  .hdot-amber { background: var(--amber); }
 
   .warn-badge {
     font-size: 10px;

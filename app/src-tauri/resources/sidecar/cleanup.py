@@ -1,7 +1,7 @@
 """
 Markdown cleanup — pure deterministic post-process, plus an optional LLM pass.
 
-Design (Stage 5):
+Design:
 - `clean(markdown, source_format, rules)` is a PURE function: raw Markdown in,
   cleaned Markdown out, plus a structured per-rule change summary. No model, no
   network, deterministic, fast, fully unit-testable against fixtures.
@@ -20,6 +20,7 @@ The rules target documented MarkItDown PDF pain points:
   collapse_blanks — normalise runs of blank lines
   detect_headings — conservatively promote heading-like lines to Markdown headings
 """
+import asyncio
 import re
 
 import provider as _provider
@@ -75,7 +76,7 @@ _SYSTEM_PROMPT: str = (
 
 
 class CleanupCancelled(Exception):
-    """Raised inside the worker thread when the caller cancels mid-document."""
+    """Raised when cleanup is cancelled between provider requests."""
 
 _CID_RE = re.compile(r"\(cid:\d+\)")
 _STRUCTURAL_RE = re.compile(r"^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\||```|~~~)")
@@ -120,21 +121,21 @@ def clean(markdown: str, source_format: str, rules: dict) -> tuple[str, dict]:
     return text, summary
 
 
-def llm_clean(
+async def llm_clean(
     text: str,
     provider_cfg: dict,
-    timeout: float = 120.0,
+    idle_timeout: float = _provider.DEFAULT_IDLE_TIMEOUT_SECS,
     progress_cb=None,
-    should_cancel=None,
+    cancel_event: asyncio.Event | None = None,
+    activity_cb=None,
 ) -> str:
     """Run an LLM cleanup pass, CHUNKED so no single request overflows the model's
     context window. Reuses provider.py plumbing; raises on failure (caller fails soft).
 
     `provider_cfg`: {mode, api_type, base_url, key, model}.
-    `progress_cb(done, total)`: optional, called as each chunk completes (thread-safe
-        ints only — it's invoked from the executor thread).
-    `should_cancel()`: optional predicate; checked between chunks. Returns truthy to
-        stop early (raises CleanupCancelled).
+    `progress_cb(done, total)`: optional, called as each chunk completes.
+    `cancel_event`: optional event checked between chunks and during streamed reads.
+    `activity_cb()`: optional, called whenever the provider yields output text.
     """
     mode = provider_cfg.get("mode", "off")
     model = (provider_cfg.get("model") or "").strip()
@@ -150,7 +151,9 @@ def llm_clean(
 
     # Resolve the model once, not per chunk.
     if not model:
-        model = _resolve_model(mode, api_type, base_url, key)
+        model = await asyncio.to_thread(
+            _resolve_model, mode, api_type, base_url, key
+        )
 
     chunks = _split_into_chunks(text, _CHUNK_TARGET_CHARS)
     total = len(chunks)
@@ -159,9 +162,18 @@ def llm_clean(
 
     cleaned_parts: list[str] = []
     for i, chunk in enumerate(chunks):
-        if should_cancel and should_cancel():
+        if cancel_event is not None and cancel_event.is_set():
             raise CleanupCancelled()
-        out = _clean_one_chunk(chunk, mode, api_type, base_url, key, model, timeout)
+        out = await _clean_one_chunk(
+            chunk, mode, api_type, base_url, key, model, idle_timeout,
+            cancel_event, activity_cb,
+        )
+        if not isinstance(out, str):
+            raise _provider.ProviderMalformedResponse(
+                "The provider returned a non-text cleanup response."
+            )
+        if not out.strip():
+            raise _provider.ProviderEmptyOutput("The model returned no text.")
         cleaned_parts.append(out.strip("\n"))
         if progress_cb:
             progress_cb(i + 1, total)
@@ -214,7 +226,10 @@ def _round_up(n: int, step: int) -> int:
     return ((n + step - 1) // step) * step
 
 
-def _clean_one_chunk(chunk, mode, api_type, base_url, key, model, timeout) -> str:
+async def _clean_one_chunk(
+    chunk, mode, api_type, base_url, key, model, idle_timeout,
+    cancel_event=None, activity_cb=None,
+) -> str:
     """Send one chunk to the model with a context window / output cap sized to fit it,
     so the prompt is never silently truncated."""
     system = _SYSTEM_PROMPT
@@ -223,20 +238,29 @@ def _clean_one_chunk(chunk, mode, api_type, base_url, key, model, timeout) -> st
     out_budget = int(_est_tokens(chunk) * 1.5) + 256
 
     if mode == "api" and api_type == "anthropic":
-        return _provider.chat_anthropic(key, model, system, chunk, timeout,
-                                        max_tokens=min(8192, out_budget))
+        return await _provider.chat_anthropic(
+            key, model, system, chunk, idle_timeout,
+            max_tokens=min(8192, out_budget), cancel_event=cancel_event,
+            activity_cb=activity_cb,
+        )
 
     if mode == "local":
         in_tok = _est_tokens(system) + _est_tokens(chunk)
         num_ctx = _round_up(in_tok + out_budget + 256, 2048)
         num_ctx = max(_NUM_CTX_FLOOR, min(num_ctx, _NUM_CTX_MAX))
-        return _provider.chat_local(base_url, model, system, chunk, timeout,
-                                    num_ctx=num_ctx, num_predict=out_budget)
+        return await _provider.chat_local(
+            base_url, model, system, chunk, idle_timeout,
+            num_ctx=num_ctx, num_predict=out_budget, cancel_event=cancel_event,
+            activity_cb=activity_cb,
+        )
 
     # api, openai-compatible (OpenAI, Groq, DeepSeek, …). Floor max_tokens so a
     # thinking model cannot spend the entire budget on hidden reasoning.
-    return _provider.chat_openai_compat(base_url, key, model, system, chunk, timeout,
-                                        max_tokens=max(4096, out_budget))
+    return await _provider.chat_openai_compat(
+        base_url, key, model, system, chunk, idle_timeout,
+        max_tokens=max(4096, out_budget), cancel_event=cancel_event,
+        activity_cb=activity_cb,
+    )
 
 
 def _split_into_chunks(text: str, target_chars: int) -> list[str]:

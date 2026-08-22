@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// ── Stage 0 types (unchanged) ──────────────────────────────────────────────
+// ── Core types ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HealthReport {
@@ -14,6 +14,9 @@ pub struct HealthReport {
 pub struct ProvisionStatus {
     pub state: String, // "not_provisioned" | "ready"
 }
+
+/// Runtime status contract re-exported for IPC consumers.
+pub use crate::runtime::RuntimeStatus;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ProgressPayload {
@@ -61,7 +64,7 @@ pub struct ConvertMeta {
     pub converter_path: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
-    /// Stage 6: populated when embedded images were extracted to a folder.
+    /// Populated when embedded images were extracted to a folder.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assets_folder: Option<String>,
 }
@@ -82,7 +85,7 @@ pub struct ConvertResponse {
     pub error: Option<IpcError>,
 }
 
-// ── Stage 3: Capabilities types ────────────────────────────────────────────
+// ── Capability types ────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RuntimeInfo {
@@ -109,7 +112,7 @@ pub struct FormatEntry {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OptionalCapability {
-    pub status: String,     // "not_installed" | "installed" | "missing" (broken)
+    pub status: String, // "not_installed" | "installed" | "missing" (broken)
     pub engine: String,
     pub size_hint: String,
     pub note: String,
@@ -137,7 +140,7 @@ pub struct CapabilitiesReport {
     pub optional: OptionalCapabilities,
 }
 
-// ── Stage 3: Provider check result ─────────────────────────────────────────
+// ── Provider check result ──────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProviderCheckResult {
@@ -150,7 +153,7 @@ pub struct ProviderCheckResult {
     pub usable: bool,
 }
 
-// ── Stage 4: Batch types ────────────────────────────────────────────────────
+// ── Batch types ─────────────────────────────────────────────────────────────
 
 /// One file in the batch queue.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -197,12 +200,12 @@ pub struct BatchDoneEvent {
     pub failed: u32,
     pub cancelled: u32,
     pub items: Vec<BatchItem>,
-    /// Stage 5: whether cleanup ran for this batch, and aggregate change counts.
+    /// Whether cleanup ran for this batch, and aggregate change counts.
     pub cleanup_applied: bool,
     pub cleanup_changes: u32,
 }
 
-// ── Stage 5: Cleanup types ──────────────────────────────────────────────────
+// ── Cleanup types ───────────────────────────────────────────────────────────
 
 /// Cleanup options carried on `start_batch` / `retry_failed`. Mirrors the sidecar
 /// `cleanup` params. `method` is "none" | "rules" | "ai":

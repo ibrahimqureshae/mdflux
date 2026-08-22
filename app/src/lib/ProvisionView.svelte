@@ -15,8 +15,22 @@
 
 <script lang="ts">
   import Stepper, { type Step } from '$lib/Stepper.svelte';
+  import {
+    editionLabel,
+    isImmutableFull,
+    type RuntimeStatus,
+  } from '$lib/runtime-status';
 
-  let { progress }: { progress: ProvisionProgress } = $props();
+  let {
+    progress,
+    runtimeStatus = null,
+  }: {
+    progress: ProvisionProgress;
+    runtimeStatus?: RuntimeStatus | null;
+  } = $props();
+
+  const isFull = $derived(runtimeStatus ? isImmutableFull(runtimeStatus) : false);
+  const editionName = $derived(runtimeStatus ? editionLabel(runtimeStatus.edition) : 'Lite');
 
   const STEPS: Step[] = [
     { title: 'Setup tools',  description: 'Download uv' },
@@ -74,8 +88,17 @@
 
 <div class="provision">
   <header class="head">
-    <h1>Setting up MDFlux</h1>
-    <p class="sub">One-time setup of the local conversion engine.</p>
+    <div class="head-row">
+      <h1>{isFull ? 'Preparing bundled runtime' : 'Setting up MDFlux'}</h1>
+      <span class="edition-badge" class:edition-full={isFull}>{editionName}</span>
+    </div>
+    <p class="sub">
+      {#if isFull}
+        Verifying the immutable Full runtime bundled with this build.
+      {:else}
+        Transactional first-run setup of the local conversion engine. A failed step leaves your previous runtime intact.
+      {/if}
+    </p>
   </header>
 
   <Stepper steps={STEPS} {current} {done} />
@@ -115,7 +138,13 @@
     {/if}
   </div>
 
-  <p class="hint">Internet required · this runs once</p>
+  <p class="hint">
+    {#if isFull}
+      Full edition · bundled Python and packages · no runtime installs
+    {:else}
+      Lite edition · internet required · this runs once per active runtime
+    {/if}
+  </p>
 </div>
 
 <style>
@@ -132,10 +161,33 @@
   }
 
   .head { text-align: center; }
+  .head-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+  }
   .head h1 {
     font-size: 19px;
     font-weight: 700;
     color: var(--text-primary);
+  }
+  .edition-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .edition-badge.edition-full {
+    background: color-mix(in srgb, var(--green) 15%, transparent);
+    color: var(--green);
+    border-color: color-mix(in srgb, var(--green) 35%, transparent);
   }
   .sub {
     margin-top: var(--sp-1);

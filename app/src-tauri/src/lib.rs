@@ -2,6 +2,8 @@ mod bootstrap;
 mod config;
 mod converter;
 mod ipc;
+mod platform;
+mod runtime;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,68 +28,8 @@ const PER_WORKER_MB: u64 = 1024;
 /// RAM left untouched for the OS, the app, and the model weights already resident.
 const RAM_RESERVE_MB: u64 = 1024;
 
-/// Available physical memory in MiB, or None if it can't be determined (→ no RAM cap).
-#[cfg(windows)]
 fn available_ram_mb() -> Option<u64> {
-    #[repr(C)]
-    struct MemStatus {
-        length: u32,
-        memory_load: u32,
-        total_phys: u64,
-        avail_phys: u64,
-        total_pagefile: u64,
-        avail_pagefile: u64,
-        total_virtual: u64,
-        avail_virtual: u64,
-        avail_ext_virtual: u64,
-    }
-    extern "system" {
-        fn GlobalMemoryStatusEx(buffer: *mut MemStatus) -> i32;
-    }
-    let mut s: MemStatus = unsafe { std::mem::zeroed() };
-    s.length = std::mem::size_of::<MemStatus>() as u32;
-    if unsafe { GlobalMemoryStatusEx(&mut s) } != 0 {
-        Some(s.avail_phys / (1024 * 1024))
-    } else {
-        None
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn available_ram_mb() -> Option<u64> {
-    extern "C" {
-        fn sysctlbyname(
-            name: *const std::os::raw::c_char,
-            oldp: *mut std::ffi::c_void,
-            oldlenp: *mut usize,
-            newp: *mut std::ffi::c_void,
-            newlen: usize,
-        ) -> std::os::raw::c_int;
-    }
-    let name = b"hw.memsize\0";
-    let mut val: u64 = 0;
-    let mut len = std::mem::size_of::<u64>();
-    let rc = unsafe {
-        sysctlbyname(
-            name.as_ptr() as *const _,
-            &mut val as *mut _ as *mut _,
-            &mut len,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-    // hw.memsize is TOTAL physical RAM. macOS uses free RAM as cache, so treat ~half of
-    // total as a conservative available budget for sizing the pool.
-    if rc == 0 && val > 0 {
-        Some((val / (1024 * 1024)) / 2)
-    } else {
-        None
-    }
-}
-
-#[cfg(not(any(windows, target_os = "macos")))]
-fn available_ram_mb() -> Option<u64> {
-    None
+    platform::available_ram_mb()
 }
 
 /// CPU-based concurrency cap — stable across a run (does not depend on live RAM).
@@ -140,10 +82,7 @@ impl WrittenPaths {
     }
 
     pub fn contains(&self, canon: &std::path::Path) -> bool {
-        self.0
-            .lock()
-            .map(|g| g.contains(canon))
-            .unwrap_or(false)
+        self.0.lock().map(|g| g.contains(canon)).unwrap_or(false)
     }
 }
 pub struct BatchManager {
@@ -165,15 +104,14 @@ impl BatchManager {
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
     fn is_cancelled(&self) -> bool {
-        self.cancel_flag
-            .load(std::sync::atomic::Ordering::Relaxed)
+        self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 fn sidecar_paths(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
-    let python = bootstrap::python_path(app);
+    let python = bootstrap::python_path(app)?;
     let resource_dir = app
         .path()
         .resource_dir()
@@ -211,7 +149,7 @@ pub(crate) fn hide_console(_cmd: &mut std::process::Command) {}
 
 // ── Format sets (single source of truth in Rust) ───────────────────────────
 
-/// Core formats always supported (provisioned at Stage 0).
+/// Core formats always supported.
 const CORE_EXTS: &[&str] = &[
     "pdf", "docx", "pptx", "xlsx", "xls", "html", "htm", "csv", "json", "xml", "epub", "txt", "md",
 ];
@@ -227,7 +165,7 @@ fn all_supported_exts() -> Vec<&'static str> {
     v
 }
 
-/// Stage 6: conversion options threaded through the batch pipeline.
+/// Conversion options threaded through the batch pipeline.
 struct BatchConvOpts {
     /// LLM config for image description; `Null` when disabled.
     llm_cfg: serde_json::Value,
@@ -250,6 +188,11 @@ async fn get_provision_status(app: AppHandle) -> Result<ipc::ProvisionStatus, St
 }
 
 #[tauri::command]
+async fn get_runtime_status(app: AppHandle) -> Result<ipc::RuntimeStatus, String> {
+    bootstrap::runtime_status(&app)
+}
+
+#[tauri::command]
 async fn start_provision(
     app: AppHandle,
     force: bool,
@@ -261,7 +204,11 @@ async fn start_provision(
     if force {
         manager.kill_sidecar().await;
     }
-    bootstrap::provision(app, force).await
+    let mgr = Arc::clone(&*manager);
+    bootstrap::provision(app, force, || async move {
+        mgr.kill_sidecar().await;
+    })
+    .await
 }
 
 #[tauri::command]
@@ -269,7 +216,7 @@ async fn run_health_check(
     app: AppHandle,
     manager: tauri::State<'_, Arc<SidecarManager>>,
 ) -> Result<ipc::HealthReport, String> {
-    let python = bootstrap::python_path(&app);
+    let python = bootstrap::python_path(&app)?;
     if !python.exists() {
         return Err("Python environment not found. Click Repair to reinstall.".to_string());
     }
@@ -297,8 +244,7 @@ async fn run_health_check(
     let data = resp
         .get("result")
         .ok_or("Health response missing 'result' field.")?;
-    serde_json::from_value(data.clone())
-        .map_err(|e| format!("Could not parse health report: {e}"))
+    serde_json::from_value(data.clone()).map_err(|e| format!("Could not parse health report: {e}"))
 }
 
 #[tauri::command]
@@ -352,7 +298,11 @@ async fn convert_file(
         )
         .map_err(|e| format!("Could not parse conversion result: {e}"))?;
 
-        Ok(ipc::ConvertResponse { ok: true, result: Some(result), error: None })
+        Ok(ipc::ConvertResponse {
+            ok: true,
+            result: Some(result),
+            error: None,
+        })
     } else {
         let error: ipc::IpcError = serde_json::from_value(
             resp.get("error")
@@ -360,7 +310,11 @@ async fn convert_file(
                 .ok_or("Response missing 'error'")?,
         )
         .map_err(|e| format!("Could not parse error response: {e}"))?;
-        Ok(ipc::ConvertResponse { ok: false, result: None, error: Some(error) })
+        Ok(ipc::ConvertResponse {
+            ok: false,
+            result: None,
+            error: Some(error),
+        })
     }
 }
 
@@ -368,8 +322,8 @@ async fn convert_file(
 fn build_conversion_llm_cfg(cfg: &config::AppConfig) -> serde_json::Value {
     let (base_url, key) = match cfg.llm_mode.as_str() {
         "local" => (cfg.local_base_url.clone(), String::new()),
-        "api"   => (cfg.api_base_url.clone(), cfg.api_key.clone()),
-        _       => return serde_json::Value::Null,
+        "api" => (cfg.api_base_url.clone(), cfg.api_key.clone()),
+        _ => return serde_json::Value::Null,
     };
     serde_json::json!({
         "mode":     cfg.llm_mode,
@@ -386,12 +340,18 @@ fn build_conversion_llm_cfg(cfg: &config::AppConfig) -> serde_json::Value {
 /// Failures to write individual images are silently skipped — the .md is never lost.
 fn extract_zip_images(source: &str, out_dir: &std::path::Path) -> (String, Vec<String>) {
     let p = std::path::Path::new(source);
-    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     if !["docx", "pptx", "epub"].contains(&ext.as_str()) {
         return (String::new(), vec![]);
     }
 
-    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "output".into());
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "output".into());
     let assets_dir = out_dir.join(format!("{stem}_assets"));
     let assets_name = format!("{stem}_assets");
 
@@ -418,17 +378,26 @@ fn extract_zip_images(source: &str, out_dir: &std::path::Path) -> (String, Vec<S
     let mut to_extract: Vec<(String, Vec<u8>)> = Vec::new();
     let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
     for i in 0..zip.len() {
-        let mut entry = match zip.by_index(i) { Ok(e) => e, Err(_) => continue };
+        let mut entry = match zip.by_index(i) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
         let name_lc = entry.name().to_lowercase();
         // Only extract from standard media/image folders.
         let in_media = name_lc.contains("/media/")
             || name_lc.contains("\\media\\")
             || name_lc.starts_with("images/")
             || name_lc.contains("/images/");
-        if !in_media { continue; }
+        if !in_media {
+            continue;
+        }
         let entry_ext = std::path::Path::new(&name_lc)
-            .extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
-        if !IMG_EXTS.contains(&entry_ext.as_str()) { continue; }
+            .extension()
+            .map(|e| e.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if !IMG_EXTS.contains(&entry_ext.as_str()) {
+            continue;
+        }
 
         let mut data = Vec::new();
         use std::io::Read;
@@ -440,7 +409,8 @@ fn extract_zip_images(source: &str, out_dir: &std::path::Path) -> (String, Vec<S
                 continue; // duplicate of an already-collected image
             }
             let fname = std::path::Path::new(entry.name())
-                .file_name().map(|n| n.to_string_lossy().to_string())
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| format!("image_{}.{entry_ext}", to_extract.len() + 1));
             to_extract.push((fname, data));
         }
@@ -463,9 +433,7 @@ fn extract_zip_images(source: &str, out_dir: &std::path::Path) -> (String, Vec<S
 }
 
 #[tauri::command]
-async fn cancel_conversion(
-    manager: tauri::State<'_, Arc<SidecarManager>>,
-) -> Result<(), String> {
+async fn cancel_conversion(manager: tauri::State<'_, Arc<SidecarManager>>) -> Result<(), String> {
     manager.cancel().await
 }
 
@@ -532,8 +500,7 @@ async fn pick_file(app: AppHandle) -> Result<Option<String>, String> {
                 "Supported files",
                 &[
                     "pdf", "docx", "pptx", "xlsx", "xls", "html", "htm", "csv", "json", "xml",
-                    "epub", "txt", "md",
-                    "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif", "bmp",
+                    "epub", "txt", "md", "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif", "bmp",
                     "mp3", "wav", "m4a", "ogg", "flac", "aac",
                 ],
             )
@@ -551,7 +518,7 @@ async fn pick_file(app: AppHandle) -> Result<Option<String>, String> {
         .map(|p| p.to_string_lossy().into_owned()))
 }
 
-// ── Stage 6: Optional engine management ───────────────────────────────────
+// ── Optional engine management ────────────────────────────────────────────
 
 /// Return the install state of an optional engine from provision state.
 #[tauri::command]
@@ -575,13 +542,16 @@ async fn install_engine(
     install_lock: tauri::State<'_, Arc<tokio::sync::Mutex<()>>>,
 ) -> Result<(), String> {
     let _guard = install_lock.lock().await;
+    // Windows cannot replace native Python modules while the sidecar has them
+    // loaded. Stop it before touching the environment and wait for process exit.
+    manager.kill_sidecar().await;
     bootstrap::install_optional_engine(app.clone(), engine).await?;
     // Kill sidecar so it respawns with the new packages importable.
     manager.kill_sidecar().await;
     Ok(())
 }
 
-// ── Stage 3 commands ───────────────────────────────────────────────────────
+// ── Capability commands ────────────────────────────────────────────────────
 
 #[tauri::command]
 async fn get_capabilities(
@@ -646,7 +616,7 @@ async fn set_config(app: AppHandle, config: config::AppConfig) -> Result<(), Str
     config::save(&app, &config)
 }
 
-// ── Stage 5: Cleanup ─────────────────────────────────────────────────────────
+// ── Cleanup ─────────────────────────────────────────────────────────────────
 
 /// Build the provider config block the sidecar `cleanup` method expects. Keeps the
 /// API key server-side — the frontend never has to round-trip it for cleanup.
@@ -711,11 +681,10 @@ async fn cleanup_markdown(
     let data = resp
         .get("result")
         .ok_or("Cleanup response missing 'result'.")?;
-    serde_json::from_value(data.clone())
-        .map_err(|e| format!("Could not parse cleanup result: {e}"))
+    serde_json::from_value(data.clone()).map_err(|e| format!("Could not parse cleanup result: {e}"))
 }
 
-// ── Stage 4 commands ───────────────────────────────────────────────────────
+// ── Batch commands ──────────────────────────────────────────────────────────
 
 /// Expand a list of paths (files and/or folders) to all supported file paths.
 /// Folders are walked recursively; unsupported extensions are filtered out.
@@ -759,8 +728,8 @@ async fn read_text_file(
     path: String,
     written: tauri::State<'_, Arc<WrittenPaths>>,
 ) -> Result<String, String> {
-    let canonical = std::fs::canonicalize(&path)
-        .map_err(|e| format!("Could not read file: {e}"))?;
+    let canonical =
+        std::fs::canonicalize(&path).map_err(|e| format!("Could not read file: {e}"))?;
 
     let cfg = config::load(&app);
     let mut allowed = false;
@@ -790,7 +759,9 @@ async fn read_text_file(
     }
 
     if !allowed {
-        return Err("Access denied: this file is outside the app's output directories.".to_string());
+        return Err(
+            "Access denied: this file is outside the app's output directories.".to_string(),
+        );
     }
 
     std::fs::read_to_string(&canonical).map_err(|e| format!("Could not read file: {e}"))
@@ -811,7 +782,12 @@ async fn stat_files(paths: Vec<String>) -> Result<Vec<FileInfo>, String> {
             .map(|e| e.to_string_lossy().to_uppercase())
             .unwrap_or_default();
         let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
-        out.push(FileInfo { path: p.clone(), name, ext, size });
+        out.push(FileInfo {
+            path: p.clone(),
+            name,
+            ext,
+            size,
+        });
     }
     Ok(out)
 }
@@ -835,8 +811,7 @@ fn collect_supported_depth(
     if depth > MAX_DEPTH {
         return Ok(());
     }
-    let entries =
-        std::fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {e}"))?;
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {e}"))?;
     for entry in entries.flatten() {
         // Use file_type() (does NOT follow symlinks) instead of is_dir() (which does)
         // so a symlink loop can't send us into unbounded recursion.
@@ -877,14 +852,16 @@ async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
         .map(|p| p.to_string_lossy().into_owned()))
 }
 
-/// Stage 7: reveal a path in the OS file manager. If given a file, opens its
+/// Reveal a path in the OS file manager. If given a file, opens its
 /// containing folder; if given a folder, opens it directly.
 #[tauri::command]
 async fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     let p = std::path::Path::new(&path);
     let target = if p.is_file() {
-        p.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| p.to_path_buf())
+        p.parent()
+            .map(|d| d.to_path_buf())
+            .unwrap_or_else(|| p.to_path_buf())
     } else {
         p.to_path_buf()
     };
@@ -917,7 +894,9 @@ async fn start_batch_inner(
         .map(|(idx, path)| pre_check_file(path, idx, &run))
         .collect();
 
-    let result = ipc::BatchStartResult { items: items.clone() };
+    let result = ipc::BatchStartResult {
+        items: items.clone(),
+    };
 
     let cfg = config::load(&app);
     let provider_cfg = build_provider_cfg(&cfg);
@@ -930,14 +909,22 @@ async fn start_batch_inner(
         extract_images: extract_images.unwrap_or(cfg.extract_images),
         audio_model: cfg.audio_model.clone(),
     };
-    let out_opts =
-        OutputOpts::from_config(&cfg, output_rule, output_folder, common_parent(&files));
+    let out_opts = OutputOpts::from_config(&cfg, output_rule, output_folder, common_parent(&files));
     let app2 = app.clone();
     let mgr2 = Arc::clone(&manager);
     let bat2 = Arc::clone(&batch);
 
     tokio::spawn(run_batch(
-        app2, items, mgr2, bat2, python, script, out_opts, cleanup, provider_cfg, conv_opts,
+        app2,
+        items,
+        mgr2,
+        bat2,
+        python,
+        script,
+        out_opts,
+        cleanup,
+        provider_cfg,
+        conv_opts,
     ));
 
     Ok(result)
@@ -958,9 +945,16 @@ async fn start_batch(
     batch: tauri::State<'_, Arc<BatchManager>>,
 ) -> Result<ipc::BatchStartResult, String> {
     start_batch_inner(
-        app, files, output_folder, output_rule, cleanup, extract_images,
-        Arc::clone(&*manager), Arc::clone(&*batch),
-    ).await
+        app,
+        files,
+        output_folder,
+        output_rule,
+        cleanup,
+        extract_images,
+        Arc::clone(&*manager),
+        Arc::clone(&*batch),
+    )
+    .await
 }
 
 /// Cancel the running batch — sets the flag and tells the sidecar to stop all
@@ -989,9 +983,16 @@ async fn retry_failed(
     batch: tauri::State<'_, Arc<BatchManager>>,
 ) -> Result<ipc::BatchStartResult, String> {
     start_batch_inner(
-        app, files, output_folder, output_rule, cleanup, extract_images,
-        Arc::clone(&*manager), Arc::clone(&*batch),
-    ).await
+        app,
+        files,
+        output_folder,
+        output_rule,
+        cleanup,
+        extract_images,
+        Arc::clone(&*manager),
+        Arc::clone(&*batch),
+    )
+    .await
 }
 
 // ── Batch runner ───────────────────────────────────────────────────────────
@@ -1038,7 +1039,9 @@ fn pre_check_file(path: &str, idx: usize, run: &str) -> ipc::BatchItem {
                 code: "UNSUPPORTED_FORMAT".to_string(),
                 title: "Format not supported".to_string(),
                 detail: format!("'.{ext}' files can't be converted."),
-                suggested_action: "Use PDF, DOCX, PPTX, XLSX, HTML, CSV, JSON, XML, EPUB, images, or audio.".to_string(),
+                suggested_action:
+                    "Use PDF, DOCX, PPTX, XLSX, HTML, CSV, JSON, XML, EPUB, images, or audio."
+                        .to_string(),
                 diagnostics_key: None,
             }),
             warnings: Vec::new(),
@@ -1050,7 +1053,11 @@ fn pre_check_file(path: &str, idx: usize, run: &str) -> ipc::BatchItem {
     // and are stream/page processed, so they get a much higher ceiling. This matches the
     // sidecar, which exempts the OCR/audio path from its own 100 MB document cap.
     let is_media = OCR_EXTS.contains(&ext.as_str()) || AUDIO_EXTS.contains(&ext.as_str());
-    let limit: u64 = if is_media { 2048 * 1024 * 1024 } else { 100 * 1024 * 1024 };
+    let limit: u64 = if is_media {
+        2048 * 1024 * 1024
+    } else {
+        100 * 1024 * 1024
+    };
     let limit_mb = limit / (1024 * 1024);
     if let Ok(meta) = std::fs::metadata(path) {
         if meta.len() > limit {
@@ -1103,7 +1110,7 @@ async fn run_batch(
     let state: Arc<Mutex<Vec<ipc::BatchItem>>> = Arc::new(Mutex::new(items.clone()));
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
-    // Stage 5: aggregate cleanup change counts across all workers.
+    // Aggregate cleanup change counts across all workers.
     let cleanup_enabled = cleanup
         .as_ref()
         .map(|c| c.method != "none")
@@ -1401,7 +1408,7 @@ async fn convert_one_batch(
                     })
                     .unwrap_or_default();
 
-                // Stage 6: image extraction (zip-based formats, Rust-side).
+                // Image extraction (zip-based formats, Rust-side).
                 // Extract to the OUTPUT directory (not the source) so relative links
                 // resolve correctly under fixed_folder / mirror_tree output rules.
                 let raw_markdown = if conv_opts.extract_images {
@@ -1423,15 +1430,13 @@ async fn convert_one_batch(
                     raw_markdown
                 };
 
-                // Stage 5: optional cleanup before the single write chokepoint.
+                // Optional cleanup before the single write chokepoint.
                 // Fails soft — on any cleanup error, fall back to the raw markdown
                 // so the file is still written and the run continues.
                 let markdown = match cleanup.as_ref() {
                     Some(opts) if opts.method != "none" => {
-                        match run_batch_cleanup(
-                            &manager, opts, &provider_cfg, &raw_markdown, &path,
-                        )
-                        .await
+                        match run_batch_cleanup(&manager, opts, &provider_cfg, &raw_markdown, &path)
+                            .await
                         {
                             Some((cleaned, changes)) => {
                                 cleanup_changes
@@ -1451,7 +1456,11 @@ async fn convert_one_batch(
                             wp.record(std::path::Path::new(&out_path));
                         }
                         update_item(
-                            &state, &id, "done", Some(out_path.clone()), None,
+                            &state,
+                            &id,
+                            "done",
+                            Some(out_path.clone()),
+                            None,
                             warnings.clone(),
                         )
                         .await;
@@ -1476,7 +1485,8 @@ async fn convert_one_batch(
                                 .to_string(),
                             diagnostics_key: None,
                         };
-                        update_item(&state, &id, "failed", None, Some(error.clone()), Vec::new()).await;
+                        update_item(&state, &id, "failed", None, Some(error.clone()), Vec::new())
+                            .await;
                         let _ = app.emit(
                             "batch:file-status",
                             ipc::BatchFileStatusEvent {
@@ -1538,10 +1548,7 @@ async fn update_item(
     }
 }
 
-async fn set_item_cancelled(
-    state: &Arc<tokio::sync::Mutex<Vec<ipc::BatchItem>>>,
-    id: &str,
-) {
+async fn set_item_cancelled(state: &Arc<tokio::sync::Mutex<Vec<ipc::BatchItem>>>, id: &str) {
     update_item(state, id, "cancelled", None, None, Vec::new()).await;
 }
 
@@ -1594,7 +1601,7 @@ async fn run_batch_cleanup(
     Some((cleaned, changes))
 }
 
-/// Stage 7: resolved output settings for a conversion run. Built once from config
+/// Resolved output settings for a conversion run. Built once from config
 /// + the per-run folder/rule override, then applied to every file in the batch.
 #[derive(Clone)]
 struct OutputOpts {
@@ -1696,9 +1703,10 @@ fn sanitize_filename(s: &str) -> String {
     let result = cleaned.trim().trim_end_matches('.').trim().to_string();
     // Windows reserved names — appending '_' avoids the OS refusing to create the file.
     let upper = result.to_uppercase();
-    let reserved = ["CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"];
+    let reserved = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
     if reserved.contains(&upper.as_str()) {
         return format!("{result}_");
     }
@@ -1725,7 +1733,11 @@ fn build_output_name(p: &std::path::Path, template: &str, case: &str) -> String 
         _ => name,
     };
     let final_name = sanitize_filename(&cased);
-    if final_name.is_empty() { "output".to_string() } else { final_name }
+    if final_name.is_empty() {
+        "output".to_string()
+    } else {
+        final_name
+    }
 }
 
 /// Deepest directory that is an ancestor of every path (for mirror_tree). None if the
@@ -1771,8 +1783,7 @@ fn resolve_output_dir(source: &str, opts: &OutputOpts) -> Result<std::path::Path
         _ => src_parent.to_path_buf(),
     };
 
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("Cannot create output folder: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create output folder: {e}"))?;
     Ok(dir)
 }
 
@@ -1874,10 +1885,17 @@ mod tests {
         );
 
         let (assets_name, links) = extract_zip_images(&src, &tmp);
-        assert_eq!(links.len(), 2, "exactly the 2 distinct content images (tiny+dupe dropped)");
+        assert_eq!(
+            links.len(),
+            2,
+            "exactly the 2 distinct content images (tiny+dupe dropped)"
+        );
         assert!(links.iter().any(|l| l.contains("image1.png")));
         assert!(links.iter().any(|l| l.contains("image2.jpg")));
-        assert!(links.iter().all(|l| l.starts_with("![")), "links are markdown images");
+        assert!(
+            links.iter().all(|l| l.starts_with("![")),
+            "links are markdown images"
+        );
         // Files actually written, content preserved.
         let p1 = tmp.join(format!("{assets_name}")).join("image1.png");
         assert!(p1.exists());
@@ -1901,13 +1919,22 @@ mod tests {
         );
         assert!((2..=8).contains(&cpu), "cpu cap in range");
         assert!((1..=8).contains(&cap), "batch cap in range");
-        assert!(cap <= cpu, "RAM only reduces the count, never above the CPU cap");
+        assert!(
+            cap <= cpu,
+            "RAM only reduces the count, never above the CPU cap"
+        );
         assert!(threads >= 1, "at least one thread per worker");
         // The thread budget must never let a full pool oversubscribe the cores.
         assert!(threads * cpu <= cores + cpu, "workers x threads ~= cores");
     }
 
-    fn opts(rule: &str, folder: Option<&str>, template: &str, case: &str, root: Option<&str>) -> OutputOpts {
+    fn opts(
+        rule: &str,
+        folder: Option<&str>,
+        template: &str,
+        case: &str,
+        root: Option<&str>,
+    ) -> OutputOpts {
         OutputOpts {
             rule: rule.to_string(),
             folder: folder.map(|s| s.to_string()),
@@ -1922,7 +1949,10 @@ mod tests {
         // {stem} keeps the old behavior; {ext} distinguishes formats; slug lowercases.
         let p = std::path::Path::new("C:/docs/My Report.PDF");
         assert_eq!(build_output_name(p, "{stem}", "keep"), "My Report");
-        assert_eq!(build_output_name(p, "{stem}_{ext}", "keep"), "My Report_pdf");
+        assert_eq!(
+            build_output_name(p, "{stem}_{ext}", "keep"),
+            "My Report_pdf"
+        );
         assert_eq!(build_output_name(p, "{stem}", "lower"), "my report");
         assert_eq!(build_output_name(p, "{stem}", "slug"), "my-report");
         // Illegal characters in a template are sanitized to '-'.
@@ -1958,7 +1988,13 @@ mod tests {
         std::fs::write(&src, b"x").unwrap();
 
         // fixed_folder: lands directly in dest, no sub-tree.
-        let of = opts("fixed_folder", Some(&dest.to_string_lossy()), "{stem}", "keep", None);
+        let of = opts(
+            "fixed_folder",
+            Some(&dest.to_string_lossy()),
+            "{stem}",
+            "keep",
+            None,
+        );
         let out = write_output(&src.to_string_lossy(), "md", &of).unwrap();
         assert_eq!(std::path::Path::new(&out).parent().unwrap(), dest);
 
@@ -1971,7 +2007,10 @@ mod tests {
             Some(&root.to_string_lossy()),
         );
         let out = write_output(&src.to_string_lossy(), "md", &om).unwrap();
-        assert_eq!(std::path::Path::new(&out).parent().unwrap(), dest.join("sub"));
+        assert_eq!(
+            std::path::Path::new(&out).parent().unwrap(),
+            dest.join("sub")
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -2063,12 +2102,19 @@ mod tests {
         std::fs::create_dir_all(&out_dir).unwrap();
         let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
         png.extend(std::iter::repeat(0xAB).take(8192));
-        let src = make_zip_with_media(&src_dir, "doc.docx", &[("word/media/image1.png", png.as_slice())]);
+        let src = make_zip_with_media(
+            &src_dir,
+            "doc.docx",
+            &[("word/media/image1.png", png.as_slice())],
+        );
         let (assets_name, links) = extract_zip_images(&src, &out_dir);
         assert!(!links.is_empty(), "image extracted");
         // Assets folder must be in out_dir, NOT in src_dir.
         assert!(out_dir.join(&assets_name).exists(), "assets in output dir");
-        assert!(!src_dir.join(&assets_name).exists(), "assets NOT in source dir");
+        assert!(
+            !src_dir.join(&assets_name).exists(),
+            "assets NOT in source dir"
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 }
@@ -2090,8 +2136,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            if let Err(e) = bootstrap::on_successful_launch(app.handle()) {
+                eprintln!("runtime prune skipped: {e}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_provision_status,
+            get_runtime_status,
             start_provision,
             run_health_check,
             convert_file,

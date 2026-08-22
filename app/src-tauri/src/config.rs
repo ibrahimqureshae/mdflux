@@ -18,41 +18,41 @@ pub struct AppConfig {
     pub api_provider: String,
     #[serde(default)]
     pub api_key: String,
-    /// Stage 5: model used for the optional LLM cleanup pass (empty = auto-pick first).
+    /// Model used for the optional LLM cleanup pass (empty = auto-pick first).
     #[serde(default)]
     pub cleanup_model: String,
-    /// Stage 5: set once the user has seen the first-run cleanup highlight.
+    /// Set once the user has seen the first-run cleanup highlight.
     #[serde(default)]
     pub cleanup_seen: bool,
-    /// Stage 6: model used for LLM-powered conversion (image description, empty = auto).
+    /// Model used for LLM-powered conversion (image description, empty = auto).
     #[serde(default)]
     pub conversion_model: String,
-    /// Stage 6: enable LLM image description during conversion (default false).
+    /// Enable LLM image description during conversion (default false).
     #[serde(default)]
     pub llm_conversion: bool,
-    /// Stage 6: extract embedded images to a {stem}_assets/ folder (default true).
+    /// Extract embedded images to a {stem}_assets/ folder (default true).
     #[serde(default = "default_extract_images")]
     pub extract_images: bool,
-    /// Stage 6: faster-whisper model size (default "base").
+    /// faster-whisper model size (default "base").
     #[serde(default = "default_audio_model")]
     pub audio_model: String,
-    /// Stage 7: where batch output is written —
+    /// Where batch output is written —
     /// "next_to_source" | "fixed_folder" | "mirror_tree".
     #[serde(default = "default_output_rule")]
     pub output_rule: String,
-    /// Stage 7: the default output folder for "fixed_folder"/"mirror_tree"
+    /// The default output folder for "fixed_folder"/"mirror_tree"
     /// (empty = none chosen yet). Used to seed the per-run picker.
     #[serde(default)]
     pub output_folder: String,
-    /// Stage 7: output filename template. Tokens: {stem} {ext} {date}. The ".md"
+    /// Output filename template. Tokens: {stem} {ext} {date}. The ".md"
     /// extension is always appended. Default "{stem}" reproduces the old behavior.
     #[serde(default = "default_naming_template")]
     pub naming_template: String,
-    /// Stage 7: case transform applied to the templated name —
+    /// Case transform applied to the templated name —
     /// "keep" | "lower" | "slug".
     #[serde(default = "default_naming_case")]
     pub naming_case: String,
-    /// Stage 7: reveal the output folder in the OS file manager after a batch.
+    /// Reveal the output folder in the OS file manager after a batch.
     #[serde(default)]
     pub open_after_convert: bool,
 }
@@ -77,17 +77,16 @@ fn infer_api_provider(cfg: &AppConfig) -> String {
     if cfg.api_type == "anthropic" {
         return "anthropic".into();
     }
-    let u = cfg
-        .api_base_url
-        .trim()
-        .trim_end_matches('/')
-        .to_lowercase();
+    let u = cfg.api_base_url.trim().trim_end_matches('/').to_lowercase();
     let table: &[(&str, &str)] = &[
         ("https://api.openai.com/v1", "openai"),
         ("https://api.deepseek.com/v1", "deepseek"),
         ("https://api.deepseek.com", "deepseek"),
         ("https://api.groq.com/openai/v1", "groq"),
-        ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini"),
+        (
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            "gemini",
+        ),
         ("https://openrouter.ai/api/v1", "openrouter"),
         ("https://api.together.xyz/v1", "together"),
         ("https://api.mistral.ai/v1", "mistral"),
@@ -182,8 +181,6 @@ pub fn save(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
     // Atomic write: write to .tmp then rename. A crash mid-write won't corrupt
     // the config and silently reset the user's settings to defaults.
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, json.as_bytes())
-        .map_err(|e| format!("Cannot write config: {e}"))?;
-    std::fs::rename(&tmp, &path)
-        .map_err(|e| format!("Cannot finalise config: {e}"))
+    std::fs::write(&tmp, json.as_bytes()).map_err(|e| format!("Cannot write config: {e}"))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("Cannot finalise config: {e}"))
 }

@@ -1,7 +1,7 @@
 """Health-check: probes Python version, markitdown core, and each format extra.
 
 The EXTRAS map is derived from capabilities._CORE_FORMATS so the two cannot drift
-(see the Stage 3 review: health had an 'outlook' entry that capabilities didn't).
+(the health check and capabilities map must remain in sync).
 """
 import sys
 import importlib

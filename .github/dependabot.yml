@@ -6,6 +6,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      frontend-runtime:
+        patterns:
+          - "@tauri-apps/*"
+          - "@sveltejs/*"
+          - "svelte*"
+          - "vite"
+          - "typescript"
 
   # Rust shell (Tauri)
   - package-ecosystem: cargo
@@ -13,9 +21,18 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      tauri-runtime:
+        patterns:
+          - "tauri*"
 
-  # GitHub Actions used in CI / release workflows
+  # GitHub Actions used in CI and release workflows
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
