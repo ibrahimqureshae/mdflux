@@ -123,4 +123,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run dependency drift check
-        run: python tools/dependencies/check.py
+        run: |
+          python tools/dependencies/check.py
+          python tools/release/check_workflow_tools.py
