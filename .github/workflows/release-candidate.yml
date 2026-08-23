@@ -159,6 +159,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python tools/dependencies/check.py
+      - run: python tools/release/check_workflow_tools.py
 
   build-windows-lite:
     name: RC / Build Windows Lite
