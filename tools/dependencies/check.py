@@ -14,6 +14,11 @@ from pathlib import Path
 LOCK_LINE = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s;\\]+)")
 HASH_LINE = re.compile(r"^\s*--hash=sha256:([0-9a-f]{64})\s*\\?$")
 INPUT_NAME = re.compile(r"^([A-Za-z0-9_.-]+)(?:\[[^]]+\])?(?:[<>=!~].*)?$")
+REQUIRED_MINIMUM_VERSIONS = {
+    # RapidOCR stores pathlib.Path values in its OmegaConf configuration.
+    # OmegaConf 2.0.x rejects them at runtime even though imports succeed.
+    "omegaconf": (2, 3, 0),
+}
 
 
 @dataclass(frozen=True)
@@ -71,6 +76,14 @@ def direct_requirements(path: Path) -> set[str]:
     return result
 
 
+def numeric_version(version: str) -> tuple[int, ...]:
+    """Return a comparable numeric prefix for ordinary PEP 440 versions."""
+    match = re.match(r"^(\d+(?:\.\d+)*)", version)
+    if not match:
+        raise ValueError(f"unsupported locked version {version!r}")
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
 def check(sidecar: Path) -> list[str]:
     errors: list[str] = []
     full_input = sidecar / "requirements-full.in"
@@ -88,11 +101,28 @@ def check(sidecar: Path) -> list[str]:
 
     full_header = full_lock.read_text(encoding="utf-8").splitlines()[:2]
     header = "\n".join(full_header)
-    for required in ("requirements-full.in", "--universal", "--python-version 3.12", "--generate-hashes", "--only-binary :all:"):
+    for required in (
+        "requirements-full.in",
+        "--universal",
+        "--python-version 3.12",
+        "--generate-hashes",
+        "--only-binary :all:",
+        "--no-binary antlr4-python3-runtime",
+    ):
         if required not in header:
             errors.append(f"{full_lock}: missing regeneration option {required}")
 
     canonical = parse_lock(full_lock)
+    for name, minimum in REQUIRED_MINIMUM_VERSIONS.items():
+        package = canonical.get(name)
+        if package is None:
+            errors.append(f"canonical Full lock is missing required package {name}")
+        elif numeric_version(package.version) < minimum:
+            required = ".".join(str(part) for part in minimum)
+            errors.append(
+                f"canonical Full lock has incompatible {name}=={package.version}; "
+                f"requires >={required}"
+            )
     exports = {
         "core": (sidecar / "requirements.txt", sidecar / "requirements.lock"),
         "ocr": (sidecar / "requirements-ocr.in", sidecar / "requirements-ocr.lock"),
@@ -118,6 +148,10 @@ def check(sidecar: Path) -> list[str]:
         export_header = "\n".join(export_path.read_text(encoding="utf-8").splitlines()[:2])
         if "--constraint requirements-full.lock" not in export_header:
             errors.append(f"{export_path}: must be generated with requirements-full.lock as a constraint")
+        if feature == "ocr" and "--no-binary antlr4-python3-runtime" not in export_header:
+            errors.append(
+                f"{export_path}: must allow the pinned pure-Python antlr4 source package"
+            )
     return errors
 
 

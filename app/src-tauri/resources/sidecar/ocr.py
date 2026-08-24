@@ -8,6 +8,7 @@ pypdfium2 rasterises PDF pages for OCR.
 import importlib.util
 import os
 import tempfile
+from pathlib import Path
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({
     ".jpg", ".jpeg", ".png", ".gif", ".webp",
@@ -42,23 +43,24 @@ def _make_engine(intra_op_threads: int = 0):
     concurrent batch workers don't oversubscribe the CPU."""
     n = int(intra_op_threads or 0)
     if importlib.util.find_spec("rapidocr") is not None:
+        import rapidocr
         from rapidocr import RapidOCR
-        # Pin v6 small explicitly. RapidOCR 3.9+ already defaults here; we do not
-        # want a later wheel silently switching to medium (slower, +108 MB, worse det).
+
+        # OmegaConf versions used by RapidOCR reject pathlib.Path values before
+        # 2.2. RapidOCR normally assigns a Path to this setting during startup,
+        # so set the bundled model directory explicitly as a plain string. Keep
+        # this defensive conversion even with the >=2.3 dependency floor.
+        models_dir = str(Path(rapidocr.__file__).resolve().parent / "models")
         params: dict = {
             "Global.log_level": "warning",
-            "Det.ocr_version": "PP-OCRv6",
-            "Det.model_type": "small",
-            "Rec.ocr_version": "PP-OCRv6",
-            "Rec.model_type": "small",
+            "Global.model_root_dir": models_dir,
         }
         if n > 0:
             params["EngineConfig.onnxruntime.intra_op_num_threads"] = n
             params["EngineConfig.onnxruntime.inter_op_num_threads"] = n
-        try:
-            return RapidOCR(params=params)
-        except Exception:  # noqa: BLE001 — older/newer keys; use defaults
-            return RapidOCR()
+        # RapidOCR 3.9 defaults to PP-OCRv6/small. Its Det./Rec version and model
+        # type settings require Enum objects, so do not pass string lookalikes.
+        return RapidOCR(params=params)
 
     from rapidocr_onnxruntime import RapidOCR
     if n > 0:

@@ -79,7 +79,9 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
           enable-cache: true
-          cache-dependency-glob: app/src-tauri/resources/sidecar/requirements.lock
+          cache-dependency-glob: |
+            app/src-tauri/resources/sidecar/requirements.lock
+            app/src-tauri/resources/sidecar/requirements-ocr.lock
       - name: Install sidecar test dependencies
         shell: pwsh
         run: |
@@ -91,6 +93,14 @@ jobs:
       - name: Run sidecar tests
         shell: pwsh
         run: '& $env:PYTHON -m unittest discover -s tests -p "test_*.py"'
+      - name: Run locked OCR integration tests
+        shell: pwsh
+        env: { MDFLUX_REQUIRE_OCR_TESTS: "1" }
+        run: |
+          uv venv --python 3.12 .venv-ocr-ci
+          $python = (Resolve-Path .venv-ocr-ci/Scripts/python.exe).Path
+          uv pip install --python $python --require-hashes -r requirements-ocr.lock
+          & $python -m unittest tests.test_ocr_runtime
 
   sidecar-linux:
     name: CI / Sidecar Linux
@@ -103,7 +113,9 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
           enable-cache: true
-          cache-dependency-glob: app/src-tauri/resources/sidecar/requirements.lock
+          cache-dependency-glob: |
+            app/src-tauri/resources/sidecar/requirements.lock
+            app/src-tauri/resources/sidecar/requirements-ocr.lock
       - name: Install sidecar test dependencies
         run: |
           uv python install 3.12
@@ -113,6 +125,12 @@ jobs:
           echo "PYTHON=$PYTHON" >> "$GITHUB_ENV"
       - name: Run sidecar tests
         run: '$PYTHON -m unittest discover -s tests -p "test_*.py"'
+      - name: Run locked OCR integration tests
+        env: { MDFLUX_REQUIRE_OCR_TESTS: "1" }
+        run: |
+          uv venv --python 3.12 .venv-ocr-ci
+          uv pip install --python .venv-ocr-ci/bin/python --require-hashes -r requirements-ocr.lock
+          .venv-ocr-ci/bin/python -m unittest tests.test_ocr_runtime
 
   dependency-drift:
     name: CI / Dependency Drift

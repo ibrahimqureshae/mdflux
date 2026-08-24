@@ -104,6 +104,11 @@ jobs:
         with:
           ref: "${{ needs.validate-tag.outputs.commit }}"
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            app/src-tauri/resources/sidecar/requirements.lock
+            app/src-tauri/resources/sidecar/requirements-ocr.lock
       - name: Install and test sidecar
         shell: pwsh
         run: |
@@ -112,6 +117,11 @@ jobs:
           $python = (Resolve-Path .venv-ci/Scripts/python.exe).Path
           uv pip install --python $python --require-hashes -r requirements.lock
           & $python -m unittest discover -s tests -p "test_*.py"
+          uv venv --python 3.12 .venv-ocr-ci
+          $ocrPython = (Resolve-Path .venv-ocr-ci/Scripts/python.exe).Path
+          uv pip install --python $ocrPython --require-hashes -r requirements-ocr.lock
+          $env:MDFLUX_REQUIRE_OCR_TESTS = "1"
+          & $ocrPython -m unittest tests.test_ocr_runtime
 
   sidecar-linux:
     name: Release / Sidecar Linux
@@ -123,6 +133,11 @@ jobs:
         with:
           ref: "${{ needs.validate-tag.outputs.commit }}"
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            app/src-tauri/resources/sidecar/requirements.lock
+            app/src-tauri/resources/sidecar/requirements-ocr.lock
       - name: Install and test sidecar
         run: |
           uv python install 3.12
@@ -130,6 +145,9 @@ jobs:
           PYTHON="$PWD/.venv-ci/bin/python"
           uv pip install --python "$PYTHON" --require-hashes -r requirements.lock
           "$PYTHON" -m unittest discover -s tests -p "test_*.py"
+          uv venv --python 3.12 .venv-ocr-ci
+          uv pip install --python .venv-ocr-ci/bin/python --require-hashes -r requirements-ocr.lock
+          MDFLUX_REQUIRE_OCR_TESTS=1 .venv-ocr-ci/bin/python -m unittest tests.test_ocr_runtime
 
   dependency-drift:
     name: Release / Dependency Drift
