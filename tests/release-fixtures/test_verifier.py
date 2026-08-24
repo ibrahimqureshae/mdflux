@@ -139,6 +139,10 @@ class ArchiveBuilderTests(unittest.TestCase):
             verify_no_full_provisioning=lambda *_args, **_kwargs: CheckResult(
                 "full-no-provisioning", True, "test provisioning snapshot"
             ),
+            verify_ocr_conversions=lambda *_args, **_kwargs: [
+                CheckResult("ocr-image", True, "test OCR image"),
+                CheckResult("ocr-scanned-pdf", True, "test OCR PDF"),
+            ],
         )
         runtime_checks.start()
         self.addCleanup(runtime_checks.stop)
@@ -183,6 +187,8 @@ class StructuralVerificationTests(ArchiveBuilderTests):
             by_name["edition-manifest-edition"].detail,
             "edition=full",
         )
+        self.assertTrue(by_name["ocr-image"].passed)
+        self.assertTrue(by_name["ocr-scanned-pdf"].passed)
 
     def test_lite_linux_tarball_layout(self) -> None:
         report = verify_archive(

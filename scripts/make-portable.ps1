@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "windows\portable-common.ps1")
 $root = Split-Path -Parent $PSScriptRoot
 $tauriDir = Join-Path $root "app\src-tauri"
+$sidecarDir = Join-Path $tauriDir "resources\sidecar"
 $releaseDir = Join-Path $tauriDir "target\release"
 $dist = Join-Path $root "dist"
 $fullLock = Join-Path $tauriDir "resources\sidecar\requirements-full.lock"
@@ -29,6 +30,11 @@ try {
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     Copy-Item -LiteralPath $exe -Destination (Join-Path $stage "MDFlux.exe")
     Copy-Item -LiteralPath $resources -Destination $stage -Recurse
+    $stagedSidecar = Join-Path $stage "resources\sidecar"
+    if (Test-Path -LiteralPath $stagedSidecar) {
+        Remove-Item -LiteralPath $stagedSidecar -Recurse -Force
+    }
+    Copy-Item -LiteralPath $sidecarDir -Destination (Join-Path $stage "resources") -Recurse
     $runtime = Join-Path $stage "resources\runtime"
     if (Test-Path -LiteralPath $runtime) { Remove-Item -LiteralPath $runtime -Recurse -Force }
     Write-EditionManifest -ResourcesDirectory (Join-Path $stage "resources") -Edition "lite" -Metadata $metadata -PythonVersion $null

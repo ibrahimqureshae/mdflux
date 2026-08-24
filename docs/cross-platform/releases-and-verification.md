@@ -96,8 +96,10 @@ Optional flags:
 - `--keep-temp`: retain the extraction directory for debugging
 
 The verifier checks layout, `resources/edition.json`, dependency lock checksum, bundled Python
-(Full), core/OCR/audio imports (Full), sidecar health, sample conversions, and confirms Full
-does not write a provisioned runtime into application data.
+(Full), core/OCR/audio imports (Full), sidecar health, sample conversions, real image and
+scanned-PDF OCR (Full), and confirms Full does not write a provisioned runtime into application
+data. CI also installs the locked OCR dependency set separately on Windows and Linux and runs
+the same two OCR paths, protecting Lite's optional OCR installation.
 
 > Use the verifier version available in your checkout for CI and local checks.
 
@@ -117,6 +119,7 @@ Every archive includes `resources/edition.json` (schema version 1) with `edition
 | Bundled interpreter present | No | Yes |
 | Sidecar health request | Yes | Yes |
 | Sample conversions | Yes | Yes |
+| Image and scanned-PDF OCR | Locked-runtime CI | Yes |
 | No runtime provisioning into app data | N/A | Yes |
 
 **Pending:** end-to-end verification reports for all four archives on clean Windows and Ubuntu

@@ -20,6 +20,7 @@ from .runtime_checks import (
     verify_conversions,
     verify_full_imports,
     verify_no_full_provisioning,
+    verify_ocr_conversions,
     verify_sidecar_health,
 )
 
@@ -137,6 +138,10 @@ def verify_archive(
                 edition=edition,
                 fixtures_dir=fixtures,
             ):
+                report.add(check)
+
+        if edition == "full":
+            for check in verify_ocr_conversions(extract_dir, platform=platform):
                 report.add(check)
 
         if edition == "full" and provisioning_before is not None:

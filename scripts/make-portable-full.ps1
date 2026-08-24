@@ -42,6 +42,11 @@ try {
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     Copy-Item -LiteralPath $exe -Destination (Join-Path $stage "MDFlux.exe")
     Copy-Item -LiteralPath $resources -Destination $stage -Recurse
+    $stagedSidecar = Join-Path $stage "resources\sidecar"
+    if (Test-Path -LiteralPath $stagedSidecar) {
+        Remove-Item -LiteralPath $stagedSidecar -Recurse -Force
+    }
+    Copy-Item -LiteralPath $sidecarDir -Destination (Join-Path $stage "resources") -Recurse
     $runtime = Join-Path $stage "resources\runtime"
     New-Item -ItemType Directory -Force -Path $runtime | Out-Null
     Copy-Item -Path (Join-Path $pythonRoot '*') -Destination $runtime -Recurse -Force

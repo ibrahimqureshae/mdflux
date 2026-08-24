@@ -314,6 +314,79 @@ def verify_conversions(
     return results
 
 
+def verify_ocr_conversions(root: Path, *, platform: str) -> list[CheckResult]:
+    """Exercise packaged OCR with both an image and an image-only PDF."""
+    python = bundled_python_path(root, platform)
+    sidecar_dir = root / "resources" / "sidecar"
+    results: list[CheckResult] = []
+
+    with tempfile.TemporaryDirectory(prefix="mdflux-ocr-fixture-") as scratch:
+        scratch_dir = Path(scratch).resolve()
+        fixture_code = f"""
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+
+root = Path({str(scratch_dir)!r})
+image = Image.new("RGB", (1400, 360), "white")
+font = ImageFont.load_default(size=72)
+ImageDraw.Draw(image).text(
+    (60, 120),
+    "MDFlux OCR release verification 2026",
+    fill="black",
+    font=font,
+    stroke_width=1,
+)
+image.save(root / "ocr-smoke.png")
+image.save(root / "ocr-smoke-scanned.pdf", "PDF", resolution=150.0)
+print("fixtures OK")
+"""
+        generated = _run_python(python, fixture_code, timeout=60.0)
+        if generated.returncode != 0:
+            detail = generated.stderr.strip() or generated.stdout.strip()
+            return [CheckResult("ocr-fixtures", False, detail or "Fixture generation failed")]
+        results.append(CheckResult("ocr-fixtures", True, "Image and scanned PDF generated"))
+
+        for filename, check_name in (
+            ("ocr-smoke.png", "ocr-image"),
+            ("ocr-smoke-scanned.pdf", "ocr-scanned-pdf"),
+        ):
+            request = {
+                "v": 1,
+                "id": f"verify-{check_name}",
+                "method": "convert-one",
+                "params": {"path": str((scratch_dir / filename).resolve())},
+            }
+            try:
+                response, error = _sidecar_request(
+                    python, sidecar_dir, request, timeout=300.0
+                )
+            except subprocess.TimeoutExpired:
+                results.append(CheckResult(check_name, False, f"{filename}: timed out"))
+                continue
+            except OSError as exc:
+                results.append(CheckResult(check_name, False, f"{filename}: {exc}"))
+                continue
+
+            if response is None:
+                results.append(CheckResult(check_name, False, f"{filename}: {error}"))
+                continue
+            if not response.get("ok"):
+                err = response.get("error") or {}
+                detail = err.get("detail") or err.get("title") or "OCR failed"
+                results.append(CheckResult(check_name, False, f"{filename}: {detail}"))
+                continue
+
+            markdown = str((response.get("result") or {}).get("markdown") or "")
+            if not markdown.strip():
+                results.append(CheckResult(check_name, False, f"{filename}: empty OCR output"))
+            else:
+                results.append(CheckResult(
+                    check_name, True, f"{filename}: {len(markdown)} chars"
+                ))
+
+    return results
+
+
 def _snapshot_provisioning_paths(platform: str) -> dict[str, float | None]:
     root = app_data_root(platform)
     tracked = {

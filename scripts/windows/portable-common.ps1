@@ -46,6 +46,12 @@ function Test-WindowsPortableArchive {
         if (-not (Test-Path -LiteralPath $manifestPath)) { throw "Archive is missing resources\\edition.json" }
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
         if ($manifest.schema -ne 1 -or $manifest.edition -ne $Edition -or $manifest.platform -ne "windows-x64") { throw "Archive manifest does not match the defined Windows $Edition contract." }
+        $packagedLock = Join-Path $resources "sidecar\requirements-full.lock"
+        if (-not (Test-Path -LiteralPath $packagedLock)) { throw "Archive is missing the canonical dependency lock." }
+        $packagedLockSha = (Get-FileHash -LiteralPath $packagedLock -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($manifest.dependency_lock_sha256 -ne $packagedLockSha) {
+            throw "Archive dependency lock checksum does not match its manifest."
+        }
         $runtime = Join-Path $resources "runtime"
         if ($Edition -eq "lite") {
             if (Test-Path -LiteralPath $runtime) { throw "Lite archive unexpectedly contains resources\\runtime" }
