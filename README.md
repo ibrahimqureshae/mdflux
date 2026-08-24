@@ -16,10 +16,6 @@ Local-first · reads scanned PDFs · up to 6× fewer tokens than vision models
 [![Works offline](https://img.shields.io/badge/works-offline-3fb950)](#)
 [![GitHub stars](https://img.shields.io/github/stars/ibrahimqureshae/mdflux?style=flat&label=stars&color=3b82f6)](https://github.com/ibrahimqureshae/mdflux/stargazers)
 
-[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Lite_x64-2563EB?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_lite.zip)
-&nbsp;&nbsp;
-[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-Lite_x64-F59E0B?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_lite.tar.gz)
-
 [Full / offline-ready downloads](https://github.com/ibrahimqureshae/mdflux/releases/latest)
 &nbsp;&nbsp;·&nbsp;&nbsp;
 [**Cross-platform docs**](docs/cross-platform/README.md)
@@ -51,6 +47,10 @@ For the easiest setup, download **Full**. Everything needed for document convers
 <a href="https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_full.tar.gz">
   <img src="docs/media/download/linux-full.svg" width="400" alt="Download MDFlux Full for Linux">
 </a>
+
+[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Lite_x64-2563EB?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_lite.zip)
+&nbsp;&nbsp;
+[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-Lite_x64-F59E0B?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_lite.tar.gz)
 
 **Not sure which edition to choose? Download Full.**
 
@@ -107,10 +107,6 @@ Every time a document gets read by an LLM, you pay for it in tokens. The common 
 That's the full text recovered in about 5.7 times fewer tokens than the vision model, which still has to OCR the image on its end anyway.
 
 <div align="center">
-
-[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Lite_x64-2563EB?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_lite.zip)
-&nbsp;
-[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-Lite_x64-F59E0B?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_lite.tar.gz)
 
 [**Full / offline-ready downloads**](https://github.com/ibrahimqureshae/mdflux/releases/latest)
 &nbsp;·&nbsp;
