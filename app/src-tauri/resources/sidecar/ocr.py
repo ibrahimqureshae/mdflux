@@ -9,6 +9,8 @@ import importlib.util
 import os
 import tempfile
 
+from pathlib import Path
+
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({
     ".jpg", ".jpeg", ".png", ".gif", ".webp",
     ".tiff", ".tif", ".bmp",
@@ -42,15 +44,22 @@ def _make_engine(intra_op_threads: int = 0):
     concurrent batch workers don't oversubscribe the CPU."""
     n = int(intra_op_threads or 0)
     if importlib.util.find_spec("rapidocr") is not None:
+        import rapidocr
         from rapidocr import RapidOCR
-        # Pin v6 small explicitly. RapidOCR 3.9+ already defaults here; we do not
-        # want a later wheel silently switching to medium (slower, +108 MB, worse det).
+
+        # WORKAROUND (v0.3.0): the bundled omegaconf==2.0.6 rejects pathlib.Path
+        # values ("Value 'WindowsPath' is not a supported primitive type"), and
+        # RapidOCR assigns a Path into Global.model_root_dir when it is unset.
+        # Pre-set it as a plain string pointing at the models bundled inside the
+        # rapidocr wheel; RapidOCR wraps it back into a Path before loading models.
+        models_dir = str(Path(rapidocr.__file__).resolve().parent / "models")
+
+        # NOTE: do NOT pass Det./Rec. ocr_version/model_type as strings here —
+        # RapidOCR requires Enum types for those keys. Its built-in defaults
+        # already pin PP-OCRv6 + small for Det/Rec, so omitting them is correct.
         params: dict = {
             "Global.log_level": "warning",
-            "Det.ocr_version": "PP-OCRv6",
-            "Det.model_type": "small",
-            "Rec.ocr_version": "PP-OCRv6",
-            "Rec.model_type": "small",
+            "Global.model_root_dir": models_dir,
         }
         if n > 0:
             params["EngineConfig.onnxruntime.intra_op_num_threads"] = n
@@ -58,7 +67,7 @@ def _make_engine(intra_op_threads: int = 0):
         try:
             return RapidOCR(params=params)
         except Exception:  # noqa: BLE001 — older/newer keys; use defaults
-            return RapidOCR()
+            return RapidOCR(params=params)
 
     from rapidocr_onnxruntime import RapidOCR
     if n > 0:
