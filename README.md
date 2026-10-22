@@ -10,7 +10,7 @@ Local-first · reads scanned PDFs · up to 6× fewer tokens than vision models
 **Works with** PDF · DOCX · PPTX · XLSX · EPUB · HTML · CSV · JSON · XML · TXT · MD · images · audio
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-3b82f6.svg)](LICENSE)
-[![Download v0.3.0](https://img.shields.io/badge/download-v0.3.0-3b82f6)](https://github.com/ibrahimqureshae/mdflux/releases/latest)
+[![Download v0.3.1](https://img.shields.io/badge/download-v0.3.1-3b82f6)](https://github.com/ibrahimqureshae/mdflux/releases/latest)
 [![Up to 6x fewer tokens](https://img.shields.io/badge/vs%20vision-up%20to%206%C3%97%20fewer%20tokens-3b82f6)](#the-proof-fewer-tokens-lower-cost)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20(x64)-3b82f6.svg)](https://github.com/ibrahimqureshae/mdflux/releases)
 [![Works offline](https://img.shields.io/badge/works-offline-3fb950)](#)
@@ -40,25 +40,25 @@ For the easiest setup, download **Full**. Everything needed for document convers
 
 <div align="center">
 
-<a href="https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_full.zip">
+<a href="https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.1_windows_x64_full.zip">
   <img src="docs/media/download/windows-full.svg" width="400" alt="Download MDFlux Full for Windows">
 </a>
 
-<a href="https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_full.tar.gz">
+<a href="https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.1_linux_x64_glibc_full.tar.gz">
   <img src="docs/media/download/linux-full.svg" width="400" alt="Download MDFlux Full for Linux">
 </a>
 
-[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Lite_x64-2563EB?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_lite.zip)
+[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Lite_x64-2563EB?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.1_windows_x64_lite.zip)
 &nbsp;&nbsp;
-[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-Lite_x64-F59E0B?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_lite.tar.gz)
+[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-Lite_x64-F59E0B?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.1_linux_x64_glibc_lite.tar.gz)
 
 **Not sure which edition to choose? Download Full.**
 
 Everything is packaged together, so there are no additional MDFlux setup downloads when you open it.
 
 Prefer a smaller first download?
-[Windows Lite (4.9 MB)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_windows_x64_lite.zip) ·
-[Linux Lite (5.8 MB)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.0_linux_x64_glibc_lite.tar.gz)
+[Windows Lite (4.9 MB)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.1_windows_x64_lite.zip) ·
+[Linux Lite (5.8 MB)](https://github.com/ibrahimqureshae/mdflux/releases/latest/download/MDFlux_0.3.1_linux_x64_glibc_lite.tar.gz)
 
 Lite downloads and installs the required components when you first open it.
 

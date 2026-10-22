@@ -5,6 +5,9 @@
 
 use std::path::Path;
 
+// Keep application provisioning and CI on the same lockfile-compatible installer.
+pub const UV_VERSION: &str = "0.12.3";
+
 /// Platform identifiers supported by the application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformId {
@@ -49,13 +52,13 @@ pub fn current_platform() -> Result<PlatformSpec, String> {
     Ok(PlatformSpec {
         id: PlatformId::WindowsX64,
         uv_url:
-            "https://github.com/astral-sh/uv/releases/download/0.5.11/uv-x86_64-pc-windows-msvc.zip",
-        uv_sha256: "3e8203e6434b45427f20824419f8d8d53f970a76d94ccdcad07f8498fa01a9d0",
+            "https://github.com/astral-sh/uv/releases/download/0.12.3/uv-x86_64-pc-windows-msvc.zip",
+        uv_sha256: "b23350c79e8ad0192b8124af13a0f17e8d4e4549524785e1aef389ae5a06990e",
         uv_archive: "uv.zip",
         uv_bin: "uv.exe",
         venv_python_bin: "Scripts/python.exe",
         bundled_python_bin: "python.exe",
-        uv_label: "uv 0.5.11 - Python package manager (Windows x64)",
+        uv_label: "uv 0.12.3 - Python package manager (Windows x64)",
     })
 }
 
@@ -63,13 +66,13 @@ pub fn current_platform() -> Result<PlatformSpec, String> {
 pub fn current_platform() -> Result<PlatformSpec, String> {
     Ok(PlatformSpec {
         id: PlatformId::LinuxX64Glibc,
-        uv_url: "https://github.com/astral-sh/uv/releases/download/0.5.11/uv-x86_64-unknown-linux-gnu.tar.gz",
-        uv_sha256: "14411de26cdea5f5139fafaf2b675b1c633e744dd49c6d6a9fc8817ec065158b",
+        uv_url: "https://github.com/astral-sh/uv/releases/download/0.12.3/uv-x86_64-unknown-linux-gnu.tar.gz",
+        uv_sha256: "600cf9a742aca00d292673b16b5acffaa7b8c269a364ad0c2e79498dcb1fe101",
         uv_archive: "uv.tar.gz",
         uv_bin: "uv",
         venv_python_bin: "bin/python",
         bundled_python_bin: "bin/python3",
-        uv_label: "uv 0.5.11 - Python package manager (Linux x64)",
+        uv_label: "uv 0.12.3 - Python package manager (Linux x64)",
     })
 }
 

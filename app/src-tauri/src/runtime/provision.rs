@@ -11,6 +11,31 @@ use tauri::{AppHandle, Emitter};
 use crate::ipc::{DownloadDetail, ProgressPayload};
 use crate::platform::{self, PlatformSpec};
 
+fn cached_uv_path(bin_dir: &Path, spec: &PlatformSpec) -> PathBuf {
+    bin_dir
+        .join(format!("uv-{}", platform::UV_VERSION))
+        .join(spec.uv_bin)
+}
+
+fn is_expected_uv(path: &Path) -> bool {
+    let mut cmd = std::process::Command::new(path);
+    cmd.arg("--version");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    cmd.output()
+        .map(|output| {
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout)
+                    .split_whitespace()
+                    .take(2)
+                    .eq(["uv", platform::UV_VERSION])
+        })
+        .unwrap_or(false)
+}
+
 pub fn emit_progress(app: &AppHandle, step: &str, message: &str, pct: f32) {
     let _ = app.emit(
         "provision:progress",
@@ -42,14 +67,10 @@ pub async fn download_uv(
 ) -> Result<PathBuf, String> {
     fs::create_dir_all(bin_dir).map_err(|e| e.to_string())?;
 
-    let uv_path = bin_dir.join(spec.uv_bin);
-    if uv_path.exists() {
-        let valid = fs::metadata(&uv_path)
-            .map(|m| m.len() > 1024)
-            .unwrap_or(false);
-        if valid {
-            return Ok(uv_path);
-        }
+    // A legacy bin/uv executable must never satisfy the new installer contract.
+    let uv_path = cached_uv_path(bin_dir, spec);
+    if is_expected_uv(&uv_path) {
+        return Ok(uv_path);
     }
 
     let client = reqwest::Client::builder()
@@ -124,17 +145,62 @@ pub async fn download_uv(
         }
     }
 
-    let archive_path = bin_dir.join(spec.uv_archive);
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let stage = bin_dir.join(format!(
+        "uv-{}.staging-{}-{nonce}",
+        platform::UV_VERSION,
+        std::process::id()
+    ));
+    fs::create_dir(&stage).map_err(|e| e.to_string())?;
+    let archive_path = stage.join(spec.uv_archive);
     fs::write(&archive_path, &bytes).map_err(|e| e.to_string())?;
-    let dest = bin_dir.to_path_buf();
+    let dest = stage.clone();
     let archive_clone = archive_path.clone();
     let spec_uv_bin = spec.uv_bin.to_string();
     tokio::task::spawn_blocking(move || extract_uv(&archive_clone, &dest, &spec_uv_bin))
         .await
         .map_err(|e| e.to_string())??;
     let _ = fs::remove_file(&archive_path);
-    platform::set_executable(&uv_path)?;
+    let staged_uv = stage.join(spec.uv_bin);
+    platform::set_executable(&staged_uv)?;
+    if !is_expected_uv(&staged_uv) {
+        return Err("Downloaded setup tool does not report the pinned uv version.".into());
+    }
+    let destination = uv_path.parent().ok_or("Invalid installer destination")?;
+    // Publish only a fully extracted, hash-verified, executable tool. Preserve
+    // corrupt/obsolete directories for diagnosis rather than overwriting in place.
+    if destination.exists() {
+        if is_expected_uv(&uv_path) {
+            let _ = fs::remove_dir_all(&stage);
+            return Ok(uv_path);
+        }
+        fs::rename(destination, bin_dir.join(format!("uv-invalid-{nonce}")))
+            .map_err(|e| format!("Cannot quarantine invalid setup tools: {e}"))?;
+    }
+    fs::rename(&stage, destination).map_err(|e| format!("Cannot activate setup tools: {e}"))?;
     Ok(uv_path)
+}
+
+#[cfg(test)]
+mod installer_tests {
+    use super::*;
+    #[test]
+    fn old_unversioned_installer_is_not_reused() {
+        let spec = platform::current_platform().unwrap();
+        let root = Path::new("fixture-bin");
+        assert_ne!(cached_uv_path(root, &spec), root.join(spec.uv_bin));
+        assert_eq!(
+            cached_uv_path(root, &spec),
+            root.join("uv-0.12.3").join(spec.uv_bin)
+        );
+    }
+    #[test]
+    fn absent_installer_is_not_valid() {
+        assert!(!is_expected_uv(Path::new("nonexistent-mdflux-uv")));
+    }
 }
 
 #[cfg(target_os = "windows")]

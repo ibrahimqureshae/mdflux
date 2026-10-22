@@ -9,20 +9,23 @@ are welcome; open one to help shape priorities.
 - Improve stability and diagnostics based on user reports.
 - Keep Lite and Full portable releases reliable and easy to verify.
 
+## Shipped in 0.3.0
+
+- Windows x64 Lite and Full portable zips.
+- Linux x64 glibc Lite and Full tarballs, with consistent release metadata and verification.
+
 ## Planned
 
-- Linux x64 glibc Lite and Full tarballs.
-- Windows Lite and Full portable zips with consistent release metadata.
 - An MCP server and a scriptable, headless `mdflux convert` command.
 - macOS builds for Apple Silicon and Intel.
 - Windows code signing and macOS notarization.
-- An optional reproducible contributor shell using devenv.
 
 ## Exploring
 
 - More OCR languages and tuning presets.
 - Optional structured outputs such as front matter and JSON sidecars.
 - Pluggable cleanup profiles.
+- An optional reproducible contributor shell using devenv (a [devenv](docs/cross-platform/setup-devenv.md) setup already exists; tightening it is still open).
 
 ## Out of scope by design
 

@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.1] - Unreleased
+
+### Fixed
+
+- Lite editions could not complete first-run setup on Windows and Linux: the app downloaded
+  uv 0.5.11 while the shipped lockfiles are compiled with uv 0.12 (`--require-hashes` failed
+  with "all requirements must be pinned upfront ... found: tzdata"). The app now installs the
+  same uv 0.12.3 that CI validates the lockfiles with, and CI fails if the two ever drift (#57).
+- Linux portable archives failed to start with "requirements.lock not found at
+  /usr/lib/MDFlux/..." unless they were symlinked into the system location. Resources are now
+  resolved next to the executable, so the archive runs from any directory (#53).
+- Diagnostics reported HTTP 403 for valid Groq keys because the probe sent Python's default
+  user agent. Every provider request now identifies as `MDFlux/<version>` (#25).
+- Lite installs a versioned uv into `app-data/bin/uv-<version>/` through a staging directory,
+  so a half-downloaded or obsolete installer is never reused.
+
+### Changed
+
+- Release and release-candidate workflows launch each packaged archive in an isolated
+  package-verification mode (`--app-smoke`): first run, restart, and relocation of the payload
+  must pass before an archive can be published. Expected archive names are derived from the
+  application version instead of being hard-coded.
+
 ## [0.3.0] - 2026-08-23
 
 ### Added

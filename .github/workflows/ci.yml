@@ -78,6 +78,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
+          version: "0.12.3"
           enable-cache: true
           cache-dependency-glob: |
             app/src-tauri/resources/sidecar/requirements.lock
@@ -112,6 +113,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
+          version: "0.12.3"
           enable-cache: true
           cache-dependency-glob: |
             app/src-tauri/resources/sidecar/requirements.lock
@@ -144,3 +146,4 @@ jobs:
         run: |
           python tools/dependencies/check.py
           python tools/release/check_workflow_tools.py
+          python -m unittest tests.test_check_workflow_tools tests.test_check_packaged_app

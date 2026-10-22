@@ -32,7 +32,7 @@ pub struct ProgressPayload {
 /// What is being downloaded right now, and how fast.
 #[derive(Debug, Serialize, Clone)]
 pub struct DownloadDetail {
-    /// Human label for the artefact, e.g. "uv 0.5.11 (Windows x64)".
+    /// Human label for the artefact, e.g. "uv 0.12.3 - Python package manager (Windows x64)".
     pub label: String,
     /// Bytes received so far.
     pub received: u64,

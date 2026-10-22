@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from .checksum import verify_dependency_lock_checksum
+from .check_packaged_app import run as run_packaged_app_smoke
 from .cleanup import safe_remove_tree
 from .extract import extract_archive
 from .layout import validate_layout
@@ -40,6 +41,7 @@ def verify_archive(
     edition: str,
     fixtures_dir: Path | None = None,
     keep_temp: bool = False,
+    app_smoke: bool = False,
 ) -> VerificationReport:
     archive_path = resolve(archive)
     fixtures = fixtures_dir or _default_fixtures_dir()
@@ -80,6 +82,18 @@ def verify_archive(
 
         for check in validate_layout(extract_dir, platform=platform, edition=edition):
             report.add(check)
+
+        if app_smoke:
+            from .layout import executable_name
+
+            try:
+                run_packaged_app_smoke(
+                    extract_dir / executable_name(platform),
+                    temp_root / "app-smoke",
+                )
+                report.add(CheckResult("packaged-app-smoke", True, "Launch, restart, and relocation passed"))
+            except Exception as exc:
+                report.add(CheckResult("packaged-app-smoke", False, str(exc)))
 
         edition_json = extract_dir / "resources" / "edition.json"
         manifest = None
@@ -205,6 +219,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Keep the extracted archive directory for debugging",
     )
+    parser.add_argument(
+        "--app-smoke",
+        action="store_true",
+        help="Launch the packaged app, repeat verification, and check relocation",
+    )
     return parser
 
 
@@ -217,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         edition=args.edition,
         fixtures_dir=Path(args.fixtures_dir),
         keep_temp=args.keep_temp,
+        app_smoke=args.app_smoke,
     )
     human = format_human_report(report)
     print(human)

@@ -1,6 +1,7 @@
 pub mod edition;
 pub mod manager;
 pub mod provision;
+pub mod resources;
 pub mod status;
 pub mod store;
 
