@@ -149,6 +149,44 @@ class ArchiveBuilderTests(unittest.TestCase):
 
 
 class StructuralVerificationTests(ArchiveBuilderTests):
+    def test_app_smoke_receives_extracted_executable_and_sibling_workdir(self) -> None:
+        with patch("tools.release.verify.run_packaged_app_smoke") as smoke:
+            report = verify_archive(
+                self.lite_windows,
+                platform="windows-x64",
+                edition="lite",
+                fixtures_dir=SAMPLES_DIR,
+                app_smoke=True,
+            )
+
+        check = next(item for item in report.checks if item.name == "packaged-app-smoke")
+        self.assertTrue(check.passed)
+        smoke.assert_called_once()
+        executable, work_dir = smoke.call_args.args
+        self.assertEqual(executable.name, "MDFlux.exe")
+        self.assertEqual(executable.parent.name, "extract")
+        self.assertEqual(work_dir.name, "app-smoke")
+        self.assertEqual(work_dir.parent, executable.parent.parent)
+
+    def test_app_smoke_exception_fails_verification_report(self) -> None:
+        with patch(
+            "tools.release.verify.run_packaged_app_smoke",
+            side_effect=RuntimeError("smoke fixture failed"),
+        ) as smoke:
+            report = verify_archive(
+                self.lite_windows,
+                platform="windows-x64",
+                edition="lite",
+                fixtures_dir=SAMPLES_DIR,
+                app_smoke=True,
+            )
+
+        check = next(item for item in report.checks if item.name == "packaged-app-smoke")
+        self.assertFalse(check.passed)
+        self.assertIn("smoke fixture failed", check.detail)
+        self.assertFalse(report.passed)
+        smoke.assert_called_once()
+
     def test_lite_windows_passes_layout(self) -> None:
         report = verify_archive(
             self.lite_windows,

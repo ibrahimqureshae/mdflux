@@ -2,6 +2,7 @@ mod bootstrap;
 mod config;
 mod converter;
 mod ipc;
+mod package_verification;
 mod platform;
 mod runtime;
 
@@ -112,10 +113,7 @@ impl BatchManager {
 
 fn sidecar_paths(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let python = bootstrap::python_path(app)?;
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("Cannot locate app resources: {e}"))?;
+    let resource_dir = runtime::RuntimeContext::resolve(app)?.resource_root;
     let script = resource_dir
         .join("resources")
         .join("sidecar")
@@ -2123,12 +2121,23 @@ mod tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let verification = package_verification::Verification::from_args().unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(2);
+    });
+    let mut context = tauri::generate_context!();
+    if verification.0.is_some() {
+        context.config_mut().app.windows.clear();
+    }
     // Per-worker CPU-thread budget for batch conversions. The sidecar reads this and
     // applies it to batch workers only (single conversions use all cores). Set once at
     // startup so it propagates to the sidecar process and its worker subprocesses.
     std::env::set_var("MDFLUX_BATCH_THREADS", batch_worker_threads().to_string());
+    // The sidecar identifies itself to AI providers as MDFlux/<version> (#25).
+    std::env::set_var("MDFLUX_APP_VERSION", env!("CARGO_PKG_VERSION"));
 
     let app = tauri::Builder::default()
+        .manage(verification)
         .manage(Arc::new(SidecarManager::new()))
         .manage(Arc::new(BatchManager::new()))
         .manage(Arc::new(WrittenPaths::default()))
@@ -2137,6 +2146,24 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
+            if let Some(root) = app.state::<package_verification::Verification>().0.clone() {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let result = package_verification::run(&handle, &root).await;
+                    handle.state::<Arc<SidecarManager>>().kill_sidecar().await;
+                    let passed = result.is_ok();
+                    let report = result.unwrap_or_else(
+                        |error| serde_json::json!({"passed": false, "error": error}),
+                    );
+                    let written = std::fs::write(
+                        root.join("report.json"),
+                        serde_json::to_vec_pretty(&report).unwrap(),
+                    )
+                    .is_ok();
+                    handle.exit(if passed && written { 0 } else { 1 });
+                });
+                return Ok(());
+            }
             if let Err(e) = bootstrap::on_successful_launch(app.handle()) {
                 eprintln!("runtime prune skipped: {e}");
             }
@@ -2167,7 +2194,7 @@ pub fn run() {
             optional_engine_status,
             install_engine,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application");
 
     // Kill the sidecar deterministically on app exit. kill_on_drop(true) on the spawn

@@ -13,6 +13,7 @@ Rule across both groups: never log or mention the API key in any return value.
 """
 import asyncio
 import json
+import os
 import urllib.error
 import urllib.request
 
@@ -41,6 +42,20 @@ class _StreamingUnsupported(RuntimeError):
 
 def _safe_exc(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
+
+
+def _user_agent() -> str:
+    """Identify MDFlux on every provider request.
+
+    Some provider edges (Groq, 2026-10) answer Python's default `Python-urllib`
+    agent with HTTP 403 before the key is even checked, which made the
+    Diagnostics probe fail for working keys (#25).
+    """
+    return f"MDFlux/{os.environ.get('MDFLUX_APP_VERSION', 'dev')}"
+
+
+def _client(timeout: httpx.Timeout) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=timeout, headers={"User-Agent": _user_agent()})
 
 
 def check_local(base_url: str) -> dict:
@@ -137,7 +152,7 @@ def check_openai_compat(base_url: str, key: str) -> dict:
     base = base_url.rstrip("/")
     req = urllib.request.Request(
         f"{base}/models",
-        headers={"Authorization": f"Bearer {key}"},
+        headers={"Authorization": f"Bearer {key}", "User-Agent": _user_agent()},
     )
     try:
         with urllib.request.urlopen(req, timeout=8) as r:
@@ -186,6 +201,7 @@ def check_anthropic(key: str) -> dict:
         headers={
             "x-api-key": key,
             "anthropic-version": "2023-06-01",
+            "User-Agent": _user_agent(),
         },
     )
     try:
@@ -310,7 +326,7 @@ async def _post_json_async(
 ) -> dict:
     _check_cancelled(cancel_event)
     try:
-        async with httpx.AsyncClient(timeout=_timeout(timeout)) as client:
+        async with _client(_timeout(timeout)) as client:
             response = await client.post(url, headers=headers, json=payload)
             await _raise_http_error(response)
             _check_cancelled(cancel_event)
@@ -371,7 +387,7 @@ async def _stream_openai(
 ) -> str:
     pieces: list[str] = []
     try:
-        async with httpx.AsyncClient(timeout=_timeout(idle_timeout)) as client:
+        async with _client(_timeout(idle_timeout)) as client:
             async with client.stream("POST", url, headers=headers, json=payload) as response:
                 await _raise_http_error(response)
                 content_type = response.headers.get("content-type", "").lower()
@@ -497,7 +513,7 @@ async def chat_ollama(
     }
     pieces: list[str] = []
     try:
-        async with httpx.AsyncClient(timeout=_timeout(idle_timeout)) as client:
+        async with _client(_timeout(idle_timeout)) as client:
             async with client.stream(
                 "POST", f"{base}/api/chat",
                 headers={"Content-Type": "application/json"}, json=payload,
@@ -605,7 +621,7 @@ async def chat_anthropic(
     }
     pieces: list[str] = []
     try:
-        async with httpx.AsyncClient(timeout=_timeout(idle_timeout)) as client:
+        async with _client(_timeout(idle_timeout)) as client:
             async with client.stream(
                 "POST", "https://api.anthropic.com/v1/messages",
                 headers=headers, json=payload,

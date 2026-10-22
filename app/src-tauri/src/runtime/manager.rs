@@ -55,15 +55,18 @@ pub struct RuntimeContext {
 impl RuntimeContext {
     pub fn resolve(app: &AppHandle) -> Result<Self, String> {
         let platform = platform::current_platform()?;
-        let resource_root = app
+        let framework_root = app
             .path()
             .resource_dir()
             .map_err(|e| format!("Cannot locate app resources: {e}"))?;
+        let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+        let resource_root =
+            super::resources::resolve(&executable, &framework_root, cfg!(debug_assertions))?;
         let edition = match EditionManifest::load(&resource_root, &platform)? {
             Some(m) => EffectiveEdition::Manifest(m),
             None => EffectiveEdition::DevLite,
         };
-        let app_data = app.path().app_data_dir().expect("app data dir unavailable");
+        let app_data = app_data_dir(app);
         Ok(Self {
             platform,
             edition,
@@ -82,6 +85,11 @@ impl RuntimeContext {
 }
 
 pub fn app_data_dir(app: &AppHandle) -> PathBuf {
+    if let Some(verification) = app.try_state::<crate::package_verification::Verification>() {
+        if let Some(root) = &verification.0 {
+            return root.join("app-data");
+        }
+    }
     app.path().app_data_dir().expect("app data dir unavailable")
 }
 
@@ -529,10 +537,7 @@ pub async fn install_optional_engine(app: AppHandle, engine: String) -> Result<(
         other => return Err(format!("Unknown engine: {other}")),
     };
 
-    let uv_path = legacy_bin_dir(&ctx.app_data).join(&ctx.platform.uv_bin);
-    if !uv_path.exists() {
-        return Err("Setup tools not found. Restart the app to re-provision.".into());
-    }
+    let uv_path = download_uv(&app, &legacy_bin_dir(&ctx.app_data), &ctx.platform).await?;
 
     let python = python_path(&app)?;
     let lock_path = sidecar_resource(&ctx, lock_name)?;
